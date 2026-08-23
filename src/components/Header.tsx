@@ -11,7 +11,7 @@ export function Header({ subtitle }: Props) {
         <Icon name="local_laundry_service" />
       </span>
       <div className="app-header__text">
-        <h1>Lavanderia</h1>
+        <h1>Lavanderia - Santa Monica</h1>
         <div className="app-header__subtitle">{subtitle}</div>
       </div>
     </header>

@@ -7,15 +7,16 @@ interface Props {
   slot: SlotType
   onReserve: (slot: SlotType) => void
   onCancel: (reservation: PublicReservation) => void
+  dotRef?: (el: HTMLSpanElement | null) => void
 }
 
-export function TimelineSlot({ slot, onReserve, onCancel }: Props) {
+export function TimelineSlot({ slot, onReserve, onCancel, dotRef }: Props) {
   const state = slot.isPast ? 'past' : slot.reservation ? 'busy' : 'free'
   const isOwn = state === 'busy' && isOwnReservation(slot.reservation!.id)
 
   return (
     <div className="timeline-row">
-      <span className={`timeline-dot timeline-dot--${state}`} />
+      <span ref={dotRef} className={`timeline-dot timeline-dot--${state}`} />
       <div className={`slot-card slot-card--${state}`}>
         <div className="slot-card__info">
           <span className="slot-card__hour">{formatHour(slot.start)}</span>

@@ -1,9 +1,10 @@
 import { LAUNDRY_CONFIG } from '../config/laundry'
 import { Credits } from '../components/Credits'
+import { RhythmGame } from '../components/RhythmGame'
 
 export function AjudaScreen() {
   return (
-    <>
+    <div className="screen">
       <div className="section-title">
         <h2>Ajuda</h2>
         <div className="section-subtitle">Como funciona a lavanderia</div>
@@ -47,7 +48,13 @@ export function AjudaScreen() {
         </div>
       </div>
 
+      <div className="section-title">
+        <h2>Enquanto a roupa lava</h2>
+      </div>
+
+      <RhythmGame />
+
       <Credits />
-    </>
+    </div>
   )
 }

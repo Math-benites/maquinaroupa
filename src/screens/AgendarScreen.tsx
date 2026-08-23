@@ -31,6 +31,7 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
   const [error, setError] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState<SlotType | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [, setTick] = useState(0)
 
   const { key: dayKey, start: dayStart, end: dayEnd } = getDayBounds(offsetDays)
 
@@ -55,6 +56,11 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
     return subscribeToReservations(() => loadReservations())
   }, [loadReservations])
 
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 30000)
+    return () => window.clearInterval(id)
+  }, [])
+
   const slots = filterVisibleSlots(buildTimelineSlots(dayStart, reservations))
   const isToday = offsetDays === 0
   const activeReservation = isToday ? findActiveReservation(reservations) : null
@@ -62,28 +68,30 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
   const nextAvailable = isToday && activeReservation ? findNextAvailable(reservations, dayStart) : null
 
   return (
-    <>
-      {loading ? (
-        <StatusCardSkeleton />
-      ) : (
-        <CurrentStatus
-          isToday={isToday}
-          activeReservation={activeReservation}
-          freeUntil={freeUntil}
-          nextAvailable={nextAvailable}
+    <div className="screen">
+      <div className="agendar-sticky-top">
+        {loading ? (
+          <StatusCardSkeleton />
+        ) : (
+          <CurrentStatus
+            isToday={isToday}
+            activeReservation={activeReservation}
+            freeUntil={freeUntil}
+            nextAvailable={nextAvailable}
+          />
+        )}
+
+        <DateNavigator
+          dayKey={dayKey}
+          offsetDays={offsetDays}
+          maxOffsetDays={LAUNDRY_CONFIG.advanceBookingDays - 1}
+          onChange={setOffsetDays}
+          onOpenPicker={() => setPickerOpen(true)}
         />
-      )}
 
-      <DateNavigator
-        dayKey={dayKey}
-        offsetDays={offsetDays}
-        maxOffsetDays={LAUNDRY_CONFIG.advanceBookingDays - 1}
-        onChange={setOffsetDays}
-        onOpenPicker={() => setPickerOpen(true)}
-      />
-
-      <div className="section-title">
-        <h2>Escolha um horário</h2>
+        <div className="section-title">
+          <h2>Escolha um horário</h2>
+        </div>
       </div>
 
       {loading && <TimelineSkeleton />}
@@ -115,6 +123,6 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
           onClose={() => setPickerOpen(false)}
         />
       )}
-    </>
+    </div>
   )
 }

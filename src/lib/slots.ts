@@ -11,11 +11,18 @@ export function buildTimelineSlots(dayStart: Date, reservations: PublicReservati
 
     const reservation = reservations.find((r) => new Date(r.inicio).getTime() === start.getTime()) ?? null
 
+    const isCurrent = start.getTime() <= now.getTime() && now.getTime() < end.getTime()
+    const progress = isCurrent
+      ? (now.getTime() - start.getTime()) / (end.getTime() - start.getTime())
+      : 0
+
     slots.push({
       hour,
       start,
       end,
       isPast: end.getTime() <= now.getTime(),
+      isCurrent,
+      progress,
       reservation,
     })
   }

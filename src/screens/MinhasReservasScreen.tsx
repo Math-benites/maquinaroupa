@@ -3,6 +3,7 @@ import { formatDayMonth, formatHour } from '../lib/date'
 import { getAllOwnIds } from '../lib/ownReservations'
 import { fetchReservationsByIds, subscribeToReservations } from '../services/reservations'
 import { OwnListSkeleton } from '../components/Skeletons'
+import { Icon } from '../components/Icon'
 import type { PublicReservation } from '../types/reservation'
 
 interface Props {
@@ -37,7 +38,7 @@ export function MinhasReservasScreen({ refreshKey, onCancelRequest }: Props) {
   }, [load])
 
   return (
-    <>
+    <div className="screen">
       <div className="section-title">
         <h2>Minhas reservas</h2>
         <div className="section-subtitle">Reservas feitas neste aparelho</div>
@@ -55,7 +56,13 @@ export function MinhasReservasScreen({ refreshKey, onCancelRequest }: Props) {
       )}
 
       {!loading && !error && reservations.length === 0 && (
-        <div className="app-message">Você ainda não tem reservas neste aparelho.</div>
+        <div className="empty-state">
+          <span className="empty-state__icon">
+            <Icon name="local_laundry_service" />
+          </span>
+          <div className="empty-state__title">Tudo limpo por aqui!</div>
+          <div className="empty-state__text">Você ainda não fez nenhuma reserva neste aparelho.</div>
+        </div>
       )}
 
       {!loading && !error && reservations.length > 0 && (
@@ -76,6 +83,6 @@ export function MinhasReservasScreen({ refreshKey, onCancelRequest }: Props) {
           ))}
         </div>
       )}
-    </>
+    </div>
   )
 }

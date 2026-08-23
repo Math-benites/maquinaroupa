@@ -21,5 +21,7 @@ export interface TimelineSlot {
   start: Date
   end: Date
   isPast: boolean
+  isCurrent: boolean
+  progress: number
   reservation: PublicReservation | null
 }
