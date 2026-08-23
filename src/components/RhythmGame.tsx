@@ -232,7 +232,15 @@ export function RhythmGame() {
     return (
       <div className="rhythm-game rhythm-game--collapsed">
         <div className="rhythm-game__collapsed-text">
-          <div className="rhythm-game__collapsed-title">Jogo do Ritmo</div>
+          <div className="rhythm-game__collapsed-title">
+            <span className="rhythm-mini-icon" aria-hidden="true">
+              <span className="rhythm-mini-icon__cell rhythm-mini-icon__cell--a" />
+              <span className="rhythm-mini-icon__cell rhythm-mini-icon__cell--b" />
+              <span className="rhythm-mini-icon__cell rhythm-mini-icon__cell--c" />
+              <span className="rhythm-mini-icon__cell rhythm-mini-icon__cell--d" />
+            </span>
+            Jogo do Ritmo
+          </div>
           <div className="rhythm-game__collapsed-sub">Decore a sequência de roupas e entre no ranking</div>
         </div>
         <button type="button" className="btn-pill btn-pill--free" onClick={handleOpen}>
