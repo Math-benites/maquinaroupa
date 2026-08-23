@@ -1,32 +1,44 @@
-# React + TypeScript + Vite
+# Lavanderia - Santa Monica
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+App mobile-first pra reservar horário na lavanderia do condomínio Santa Monica, sem cadastro e sem senha. Acesso via QR code fixado na lavanderia — cada aparelho (celular) reconhece suas próprias reservas por um token salvo localmente, sem login.
 
-Currently, two official plugins are available:
+**Em produção:** [lavanderia.infrastack.com.br](https://lavanderia.infrastack.com.br)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Como funciona
 
-## React Compiler
+1. **Escolha um horário livre** na aba Agendar — a agenda mostra o dia atual com uma linha do tempo dos horários.
+2. **Informe nome e apartamento** — sem senha, sem conta.
+3. **Cancele quando precisar**, na aba "Minhas reservas" — só o mesmo celular que fez a reserva consegue cancelá-la.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Reservas são de 1 hora, com até 60 dias de antecedência. Tem um limite de reservas por apartamento em uma janela de 15 minutos, só pra evitar abuso — uso normal não é afetado.
 
-## Expanding the Oxlint configuration
+Enquanto a roupa lava, tem um mini-jogo de decorar sequência ("Jogo do Ritmo") com ranking entre os moradores.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+| Agendar | Ajuda |
+|---|---|
+| ![Tela de agendamento](docs/screenshots/01-agendar.png) | ![Tela de ajuda](docs/screenshots/03-ajuda.png) |
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## Stack
+
+- **React 19 + TypeScript + Vite** no front-end
+- **Supabase** (Postgres + RLS + Realtime) como back-end — toda escrita passa por funções `SECURITY DEFINER` no banco (`criar_reserva`, `cancelar_reserva`, `submit_score`), não por INSERT direto, pra impedir bypass das regras de negócio (horário, limite de reservas, etc) direto pela API REST.
+- **oxlint** pra lint, **Vitest** pra testes unitários
+- Deploy automático no **Cloudflare Workers** a cada push na `master`
+- CI no GitHub Actions: build, testes, lint, [Gitleaks](https://github.com/gitleaks/gitleaks) (segredos), [Trivy](https://github.com/aquasecurity/trivy) (vulnerabilidades de dependência) e [SonarQube](https://sonarcloud.io) (qualidade/segurança de código)
+
+## Desenvolvimento
+
+```bash
+npm install
+npm run dev      # servidor local
+npm run test     # testes unitários (Vitest)
+npm run lint     # oxlint
+npm run build    # typecheck + build de produção
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Precisa de um `.env` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (veja `.env.example`).
+
+## Branches
+
+- `master` — roda o pipeline completo (CI + deploy). Só recebe merge via PR.
+- `feature` — desenvolvimento, sem pipeline.
