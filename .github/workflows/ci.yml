@@ -67,15 +67,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check if SONAR_TOKEN is configured
+      - name: Check if sonarqubekey secret is configured
         id: check
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: echo "configured=${{ secrets.SONAR_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+          SONAR_TOKEN: ${{ secrets.sonarqubekey }}
+        run: echo "configured=${{ secrets.sonarqubekey != '' }}" >> "$GITHUB_OUTPUT"
 
       - name: SonarQube Scan
         if: steps.check.outputs.configured == 'true'
         uses: SonarSource/sonarqube-scan-action@v4
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.sonarqubekey }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
