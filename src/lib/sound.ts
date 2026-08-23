@@ -1,11 +1,14 @@
 let ctx: AudioContext | null = null
 
-function getContext(): AudioContext | null {
+export function getAudioCtx(): AudioContext | null {
   try {
     if (!ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext })
         .webkitAudioContext
       ctx = new Ctor()
+    }
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {})
     }
     return ctx
   } catch {
@@ -14,7 +17,7 @@ function getContext(): AudioContext | null {
 }
 
 export function playEndingSoonSound() {
-  const audioCtx = getContext()
+  const audioCtx = getAudioCtx()
   if (!audioCtx) return
 
   const now = audioCtx.currentTime
