@@ -119,11 +119,35 @@ jobs:
           PROJECT_KEY: maquinaroupa
         run: |
           set -e
-          ISSUES=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1" | jq -r '.total')
+          DASH="$SONAR_HOST_URL/dashboard?id=$PROJECT_KEY"
+
+          ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities")
+          ISSUES=$(echo "$ISSUES_JSON" | jq -r '.total')
+          BLOCKER=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="BLOCKER").count] | first) // 0')
+          CRITICAL=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="CRITICAL").count] | first) // 0')
+          MAJOR=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="MAJOR").count] | first) // 0')
           HOTSPOTS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&ps=1" | jq -r '.paging.total')
+
+          row() {
+            if [ "$2" -gt 0 ]; then echo "| $1 | ❌ $2 |"; else echo "| $1 | ✅ 0 |"; fi
+          }
+
+          {
+            echo "## SonarQube Analysis Report"
+            echo ""
+            echo "| Métrica | Resultado |"
+            echo "|---|---|"
+            row "Blocker" "$BLOCKER"
+            row "Critical" "$CRITICAL"
+            row "Major" "$MAJOR"
+            row "Security hotspots pendentes" "$HOTSPOTS"
+            echo ""
+            echo "[Ver dashboard completo no SonarCloud]($DASH)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           echo "Issues MAJOR ou piores: $ISSUES"
           echo "Security hotspots pendentes: $HOTSPOTS"
           if [ "$ISSUES" -gt 0 ] || [ "$HOTSPOTS" -gt 0 ]; then
-            echo "::error::SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes. Veja $SONAR_HOST_URL/dashboard?id=$PROJECT_KEY"
+            echo "::error::SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes. Veja $DASH"
             exit 1
           fi
