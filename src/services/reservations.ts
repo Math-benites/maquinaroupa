@@ -37,6 +37,9 @@ export async function createReservation(input: NewReservationInput): Promise<Cre
     if (error.code === '42501' || error.code === '22023') {
       throw new ReservationConflictError('Esse horário não está mais disponível.')
     }
+    if (error.code === 'RATE1') {
+      throw new ReservationConflictError('Muitas reservas em pouco tempo. Tente novamente em alguns minutos.')
+    }
     throw error
   }
 
