@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [security, master]
+    branches: [master]
   pull_request:
-    branches: [security]
+    branches: [master]
 
 permissions:
   contents: read
@@ -13,7 +13,6 @@ jobs:
   build:
     name: Build & Lint
     runs-on: ubuntu-latest
-    if: github.ref_name != 'master'
     env:
       VITE_SUPABASE_URL: https://placeholder.supabase.co
       VITE_SUPABASE_ANON_KEY: placeholder
@@ -36,7 +35,6 @@ jobs:
   gitleaks:
     name: Gitleaks (secret scan)
     runs-on: ubuntu-latest
-    if: github.ref_name != 'master'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,7 +47,6 @@ jobs:
   trivy:
     name: Trivy (dependency vulnerabilities)
     runs-on: ubuntu-latest
-    if: github.ref_name != 'master'
     steps:
       - uses: actions/checkout@v4
 
@@ -62,13 +59,9 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
 
-  # O plano free do SonarCloud só analisa a branch principal (master),
-  # branches curtas não são suportadas — por isso esse job roda só nela,
-  # enquanto os demais rodam só na branch security.
   sonarqube:
     name: SonarQube
     runs-on: ubuntu-latest
-    if: github.ref_name == 'master'
     environment: sonarqubekey
     steps:
       - uses: actions/checkout@v4
