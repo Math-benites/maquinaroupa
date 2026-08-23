@@ -29,6 +29,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Unit tests
+        run: npm run test
+
       - name: Typecheck + build
         run: npm run build
 
@@ -81,17 +84,46 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONARQUBEKEY }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
 
-      # A análise em si (bugs, vulnerabilidades, security hotspots) já
-      # roda e fica salva no dashboard do SonarCloud no step acima. Esse
-      # step só tenta aplicar o Quality Gate como um gate extra de
-      # pass/fail; continue-on-error porque no plano free o projeto pode
-      # não ter um Quality Gate configurável, e isso não deve travar
-      # o pipeline por uma limitação de plano, não uma vulnerabilidade.
-      - name: SonarQube Quality Gate
+      # O plano free não expõe Quality Gate configurável pro projeto, então
+      # em vez de depender dele, consultamos a API do SonarCloud direto:
+      # falha se houver issue MAJOR/CRITICAL/BLOCKER não resolvida, ou
+      # security hotspot pendente de revisão.
+      - name: Wait for analysis processing
         if: steps.check.outputs.configured == 'true'
-        continue-on-error: true
-        uses: SonarSource/sonarqube-quality-gate-action@v1
-        timeout-minutes: 5
+        id: wait
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBEKEY }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+        run: |
+          set -e
+          TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
+          STATUS="PENDING"
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status')
+            echo "status=$STATUS"
+            if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "$STATUS" != "SUCCESS" ]; then
+            echo "::error::Processamento da análise terminou com status $STATUS"
+            exit 1
+          fi
+
+      - name: Fail on MAJOR+ issues or pending security hotspots
+        if: steps.check.outputs.configured == 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARQUBEKEY }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+          PROJECT_KEY: maquinaroupa
+        run: |
+          set -e
+          ISSUES=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1" | jq -r '.total')
+          HOTSPOTS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&ps=1" | jq -r '.paging.total')
+          echo "Issues MAJOR ou piores: $ISSUES"
+          echo "Security hotspots pendentes: $HOTSPOTS"
+          if [ "$ISSUES" -gt 0 ] || [ "$HOTSPOTS" -gt 0 ]; then
+            echo "::error::SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes. Veja $SONAR_HOST_URL/dashboard?id=$PROJECT_KEY"
+            exit 1
+          fi
