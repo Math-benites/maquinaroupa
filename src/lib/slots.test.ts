@@ -6,6 +6,7 @@ import {
   findFreeUntil,
   findNextAvailable,
   findNextReservationStart,
+  isEndingSoon,
 } from './slots'
 import type { PublicReservation } from '../types/reservation'
 
@@ -132,6 +133,28 @@ describe('findNextAvailable', () => {
       reservation({ inicio: s.start.toISOString(), fim: s.end.toISOString() }),
     )
     expect(findNextAvailable(reservations, DAY_START)).toBeNull()
+  })
+})
+
+describe('isEndingSoon', () => {
+  it('true quando falta menos que o limite pro fim da reserva', () => {
+    const res = reservation({ fim: '2026-01-15T15:33:00.000Z' }) // faltam 3min
+    expect(isEndingSoon(res, 5)).toBe(true)
+  })
+
+  it('false quando falta mais que o limite', () => {
+    const res = reservation({ fim: '2026-01-15T15:40:00.000Z' }) // faltam 10min
+    expect(isEndingSoon(res, 5)).toBe(false)
+  })
+
+  it('false quando a reserva ja terminou', () => {
+    const res = reservation({ fim: '2026-01-15T15:29:00.000Z' }) // terminou ha 1min
+    expect(isEndingSoon(res, 5)).toBe(false)
+  })
+
+  it('true no limite exato do threshold', () => {
+    const res = reservation({ fim: '2026-01-15T15:35:00.000Z' }) // faltam exatos 5min
+    expect(isEndingSoon(res, 5)).toBe(true)
   })
 })
 

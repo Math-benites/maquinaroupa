@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'lavanderia:reservas'
+const NOTIFIED_KEY = 'lavanderia:notificados-fim'
 
 function readMap(): Record<string, string> {
   try {
@@ -34,4 +35,23 @@ export function isOwnReservation(id: string): boolean {
 
 export function getAllOwnIds(): string[] {
   return Object.keys(readMap())
+}
+
+function readNotifiedIds(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+export function wasEndingSoonNotified(id: string): boolean {
+  return readNotifiedIds().includes(id)
+}
+
+export function markEndingSoonNotified(id: string) {
+  const ids = readNotifiedIds()
+  if (!ids.includes(id)) {
+    localStorage.setItem(NOTIFIED_KEY, JSON.stringify([...ids, id]))
+  }
 }

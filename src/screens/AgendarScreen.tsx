@@ -14,7 +14,10 @@ import {
   findActiveReservation,
   findFreeUntil,
   findNextAvailable,
+  isEndingSoon,
 } from '../lib/slots'
+import { isOwnReservation, markEndingSoonNotified, wasEndingSoonNotified } from '../lib/ownReservations'
+import { playEndingSoonSound } from '../lib/sound'
 import { fetchReservationsForDay, subscribeToReservations } from '../services/reservations'
 import type { PublicReservation, TimelineSlot as SlotType } from '../types/reservation'
 
@@ -31,7 +34,7 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
   const [error, setError] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState<SlotType | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [, setTick] = useState(0)
+  const [tick, setTick] = useState(0)
 
   const { key: dayKey, start: dayStart, end: dayEnd } = getDayBounds(offsetDays)
 
@@ -66,6 +69,15 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
   const activeReservation = isToday ? findActiveReservation(reservations) : null
   const freeUntil = isToday ? findFreeUntil(reservations, dayStart) : null
   const nextAvailable = isToday && activeReservation ? findNextAvailable(reservations, dayStart) : null
+
+  useEffect(() => {
+    if (!activeReservation || !isOwnReservation(activeReservation.id)) return
+    if (wasEndingSoonNotified(activeReservation.id)) return
+    if (!isEndingSoon(activeReservation, LAUNDRY_CONFIG.endingSoonMinutes)) return
+
+    playEndingSoonSound()
+    markEndingSoonNotified(activeReservation.id)
+  }, [activeReservation, tick])
 
   return (
     <div className="screen">
