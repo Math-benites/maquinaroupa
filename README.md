@@ -40,5 +40,5 @@ Precisa de um `.env` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (veja `.
 
 ## Branches
 
-- `master` — roda o pipeline completo (CI + deploy). Só recebe merge via PR.
+- `master` — roda o pipeline completo (CI + deploy). O fluxo esperado é sempre via PR (sem branch protection configurada ainda, então isso não é bloqueado pelo GitHub).
 - `feature` — desenvolvimento, sem pipeline.
