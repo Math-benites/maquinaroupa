@@ -239,7 +239,7 @@ export function RhythmGame() {
               <span className="rhythm-mini-icon__cell rhythm-mini-icon__cell--c" />
               <span className="rhythm-mini-icon__cell rhythm-mini-icon__cell--d" />
             </span>
-            Jogo do Ritmo
+            <span>Jogo do Ritmo</span>
           </div>
           <div className="rhythm-game__collapsed-sub">Decore a sequência de roupas e entre no ranking</div>
         </div>

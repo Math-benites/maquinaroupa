@@ -117,16 +117,25 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONARQUBEKEY }}
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
           PROJECT_KEY: maquinaroupa
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -e
           DASH="$SONAR_HOST_URL/dashboard?id=$PROJECT_KEY"
+          # Em PR, escopa a consulta pro proprio PR - senao ela reflete o
+          # snapshot atual da branch principal, que so reflete o PR depois
+          # que ele ja foi mergeado (tarde demais pro gate servir de algo).
+          PR_QS=""
+          if [ -n "$PR_NUMBER" ]; then
+            PR_QS="&pullRequest=$PR_NUMBER"
+            DASH="$SONAR_HOST_URL/dashboard?id=$PROJECT_KEY&pullRequest=$PR_NUMBER"
+          fi
 
-          ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities")
+          ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities$PR_QS")
           ISSUES=$(echo "$ISSUES_JSON" | jq -r '.total')
           BLOCKER=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="BLOCKER").count] | first) // 0')
           CRITICAL=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="CRITICAL").count] | first) // 0')
           MAJOR=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="MAJOR").count] | first) // 0')
-          HOTSPOTS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&ps=1" | jq -r '.paging.total')
+          HOTSPOTS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&ps=1$PR_QS" | jq -r '.paging.total')
 
           row() {
             if [ "$2" -gt 0 ]; then echo "| $1 | ❌ $2 |"; else echo "| $1 | ✅ 0 |"; fi
