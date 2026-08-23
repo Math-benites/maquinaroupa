@@ -3,8 +3,10 @@ import {
   getAllOwnIds,
   getOwnToken,
   isOwnReservation,
+  markEndingSoonNotified,
   removeOwnReservation,
   saveOwnReservation,
+  wasEndingSoonNotified,
 } from './ownReservations'
 
 beforeEach(() => {
@@ -64,5 +66,22 @@ describe('getAllOwnIds', () => {
   it('se o localStorage tiver JSON corrompido, trata como vazio em vez de quebrar', () => {
     localStorage.setItem('lavanderia:reservas', 'isso não é json')
     expect(getAllOwnIds()).toEqual([])
+  })
+})
+
+describe('wasEndingSoonNotified / markEndingSoonNotified', () => {
+  it('nao notificado por padrao, e passa a estar depois de marcado', () => {
+    expect(wasEndingSoonNotified('r1')).toBe(false)
+    markEndingSoonNotified('r1')
+    expect(wasEndingSoonNotified('r1')).toBe(true)
+  })
+
+  it('marcar de novo o mesmo id nao duplica nem afeta outros ids', () => {
+    markEndingSoonNotified('r1')
+    markEndingSoonNotified('r1')
+    markEndingSoonNotified('r2')
+    expect(wasEndingSoonNotified('r1')).toBe(true)
+    expect(wasEndingSoonNotified('r2')).toBe(true)
+    expect(wasEndingSoonNotified('r3')).toBe(false)
   })
 })

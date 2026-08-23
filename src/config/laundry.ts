@@ -3,6 +3,7 @@ export const LAUNDRY_CONFIG = {
   closingHour: 24,
   reservationDurationMinutes: 60,
   advanceBookingDays: 60,
+  endingSoonMinutes: 5,
   timezone: 'America/Sao_Paulo',
 } as const
 

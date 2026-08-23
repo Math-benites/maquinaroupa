@@ -3,6 +3,7 @@ import { Icon } from './Icon'
 import { APARTAMENTOS } from '../config/laundry'
 import { fetchTopScores, submitScore } from '../services/gameScores'
 import { LAUNDRY_QUOTES } from '../data/laundryQuotes'
+import { getAudioCtx } from '../lib/sound'
 import type { GameScore } from '../services/gameScores'
 
 type Phase = 'form' | 'countdown' | 'showing' | 'input' | 'gameover'
@@ -39,21 +40,6 @@ function rodadaLabel(n: number): string {
 
 function randomQuote(): string {
   return LAUNDRY_QUOTES[Math.floor(Math.random() * LAUNDRY_QUOTES.length)]
-}
-
-let audioCtx: AudioContext | null = null
-
-function getAudioCtx(): AudioContext | null {
-  try {
-    if (!audioCtx) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext
-      audioCtx = new Ctor()
-    }
-    return audioCtx
-  } catch {
-    return null
-  }
 }
 
 function playTone(freq: number, durationMs = 260) {

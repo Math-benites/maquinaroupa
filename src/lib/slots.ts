@@ -71,3 +71,8 @@ export function findFreeUntil(reservations: PublicReservation[], dayStart: Date)
   const closingTime = new Date(dayStart.getTime() + LAUNDRY_CONFIG.closingHour * 60 * 60 * 1000)
   return next ?? closingTime
 }
+
+export function isEndingSoon(reservation: PublicReservation, thresholdMinutes: number): boolean {
+  const msRemaining = new Date(reservation.fim).getTime() - Date.now()
+  return msRemaining > 0 && msRemaining <= thresholdMinutes * 60 * 1000
+}
