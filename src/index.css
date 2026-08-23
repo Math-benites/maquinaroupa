@@ -1178,10 +1178,16 @@ body {
 .modal-overlay__backdrop {
   position: absolute;
   inset: 0;
+  z-index: 0;
   border: none;
   background: transparent;
   padding: 0;
   cursor: default;
+}
+
+.modal-overlay > *:not(.modal-overlay__backdrop) {
+  position: relative;
+  z-index: 1;
 }
 
 .modal-sheet {
