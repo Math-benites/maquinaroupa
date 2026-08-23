@@ -99,7 +99,7 @@ jobs:
           TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
           STATUS="PENDING"
           for i in $(seq 1 30); do
-            STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status')
+            STATUS=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status')
             echo "status=$STATUS"
             if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
               break
@@ -130,12 +130,12 @@ jobs:
             DASH="$SONAR_HOST_URL/dashboard?id=$PROJECT_KEY&pullRequest=$PR_NUMBER"
           fi
 
-          ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities$PR_QS")
+          ISSUES_JSON=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities$PR_QS")
           ISSUES=$(echo "$ISSUES_JSON" | jq -r '.total')
           BLOCKER=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="BLOCKER").count] | first) // 0')
           CRITICAL=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="CRITICAL").count] | first) // 0')
           MAJOR=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="MAJOR").count] | first) // 0')
-          HOTSPOTS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&ps=1$PR_QS" | jq -r '.paging.total')
+          HOTSPOTS=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&ps=1$PR_QS" | jq -r '.paging.total')
 
           row() {
             if [ "$2" -gt 0 ]; then echo "| $1 | ❌ $2 |"; else echo "| $1 | ✅ 0 |"; fi
