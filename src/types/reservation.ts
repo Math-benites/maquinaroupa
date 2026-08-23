@@ -1,0 +1,25 @@
+export interface Reservation {
+  id: string
+  nome: string
+  apartamento: string
+  inicio: string
+  fim: string
+  created_at: string
+}
+
+export type PublicReservation = Omit<Reservation, 'nome'>
+
+export interface NewReservationInput {
+  nome: string
+  apartamento: string
+  inicio: string
+  fim: string
+}
+
+export interface TimelineSlot {
+  hour: number
+  start: Date
+  end: Date
+  isPast: boolean
+  reservation: PublicReservation | null
+}

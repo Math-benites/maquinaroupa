@@ -1,0 +1,37 @@
+const STORAGE_KEY = 'lavanderia:reservas'
+
+function readMap(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
+function writeMap(map: Record<string, string>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(map))
+}
+
+export function saveOwnReservation(id: string, cancelToken: string) {
+  const map = readMap()
+  map[id] = cancelToken
+  writeMap(map)
+}
+
+export function getOwnToken(id: string): string | null {
+  return readMap()[id] ?? null
+}
+
+export function removeOwnReservation(id: string) {
+  const map = readMap()
+  delete map[id]
+  writeMap(map)
+}
+
+export function isOwnReservation(id: string): boolean {
+  return getOwnToken(id) !== null
+}
+
+export function getAllOwnIds(): string[] {
+  return Object.keys(readMap())
+}
