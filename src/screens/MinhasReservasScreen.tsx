@@ -48,8 +48,8 @@ export function MinhasReservasScreen({ refreshKey, onCancelRequest }: Props) {
 
       {!loading && error && (
         <div className="app-message app-message--error">
-          Não foi possível carregar suas reservas.
-          <button className="retry-btn" onClick={load}>
+          <span>Não foi possível carregar suas reservas.</span>
+          <button type="button" className="retry-btn" onClick={load}>
             Tentar novamente
           </button>
         </div>
@@ -76,7 +76,7 @@ export function MinhasReservasScreen({ refreshKey, onCancelRequest }: Props) {
                 </div>
                 <div className="own-card__apto">Apto {r.apartamento}</div>
               </div>
-              <button className="btn-pill btn-pill--danger" onClick={() => onCancelRequest(r)}>
+              <button type="button" className="btn-pill btn-pill--danger" onClick={() => onCancelRequest(r)}>
                 Cancelar
               </button>
             </div>

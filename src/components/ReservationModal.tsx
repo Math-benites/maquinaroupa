@@ -56,8 +56,9 @@ export function ReservationModal({ slot, onClose, onConfirmed }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay__backdrop" aria-label="Fechar" onClick={onClose} />
+      <div className="modal-sheet">
         <h2 className="modal-title">Reservar horário</h2>
         <div className="modal-date">{formatDayMonth(slot.start)}</div>
         <div className="modal-time">
@@ -65,7 +66,7 @@ export function ReservationModal({ slot, onClose, onConfirmed }: Props) {
         </div>
 
         <label className="modal-field">
-          Nome
+          <span>Nome</span>
           <input
             value={nome}
             onChange={(e) => {
@@ -79,7 +80,7 @@ export function ReservationModal({ slot, onClose, onConfirmed }: Props) {
         </label>
 
         <label className="modal-field">
-          Apartamento
+          <span>Apartamento</span>
           <select
             value={apartamento}
             onChange={(e) => {
@@ -100,7 +101,7 @@ export function ReservationModal({ slot, onClose, onConfirmed }: Props) {
 
         {error && <div className="modal-error">{error}</div>}
 
-        <button className="modal-confirm-btn" disabled={!podeConfirmar} onClick={handleSubmit}>
+        <button type="button" className="modal-confirm-btn" disabled={!podeConfirmar} onClick={handleSubmit}>
           {submitting ? 'Reservando...' : 'Confirmar reserva'}
         </button>
       </div>

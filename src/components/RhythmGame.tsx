@@ -235,7 +235,7 @@ export function RhythmGame() {
           <div className="rhythm-game__collapsed-title">Jogo do Ritmo</div>
           <div className="rhythm-game__collapsed-sub">Decore a sequência de roupas e entre no ranking</div>
         </div>
-        <button className="btn-pill btn-pill--free" onClick={handleOpen}>
+        <button type="button" className="btn-pill btn-pill--free" onClick={handleOpen}>
           Jogar
         </button>
       </div>
@@ -243,13 +243,14 @@ export function RhythmGame() {
   }
 
   return (
-    <div className="modal-overlay modal-overlay--center" onClick={handleClose}>
-      <div className="rhythm-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay modal-overlay--center">
+      <button type="button" className="modal-overlay__backdrop" aria-label="Fechar" onClick={handleClose} />
+      <div className="rhythm-modal">
         <div className="rhythm-game__header">
           <span>
             {phase === 'form' || phase === 'countdown' ? 'Jogo do Ritmo' : `Rodada ${sequence.length}`}
           </span>
-          <button className="rhythm-game__close" onClick={handleClose} aria-label="Fechar jogo">
+          <button type="button" className="rhythm-game__close" onClick={handleClose} aria-label="Fechar jogo">
             <Icon name="close" />
           </button>
         </div>
@@ -259,7 +260,7 @@ export function RhythmGame() {
             <div className="rhythm-game__intro">Decore a sequência de roupas e repita na ordem certa!</div>
 
             <label className="modal-field">
-              Nome
+              <span>Nome</span>
               <input
                 value={nome}
                 onChange={(e) => setNome(sanitizeNome(e.target.value))}
@@ -269,7 +270,7 @@ export function RhythmGame() {
             </label>
 
             <label className="modal-field">
-              Apartamento
+              <span>Apartamento</span>
               <select value={apartamento} onChange={(e) => setApartamento(e.target.value)}>
                 <option value="" disabled>
                   Selecione
@@ -282,7 +283,7 @@ export function RhythmGame() {
               </select>
             </label>
 
-            <button className="btn-pill btn-pill--free" disabled={!podeComecar} onClick={startGame}>
+            <button type="button" className="btn-pill btn-pill--free" disabled={!podeComecar} onClick={startGame}>
               Começar
             </button>
 
@@ -303,6 +304,7 @@ export function RhythmGame() {
               {ITEMS.map((item, i) => (
                 <button
                   key={item.label}
+                  type="button"
                   className={`rhythm-game__tile rhythm-game__tile--${item.tone} ${
                     activeIndex === i ? 'rhythm-game__tile--active' : ''
                   }`}
@@ -329,7 +331,7 @@ export function RhythmGame() {
               <div className="rhythm-game__quote-text">{quote}</div>
             </div>
 
-            <button className="btn-pill btn-pill--free" onClick={startGame}>
+            <button type="button" className="btn-pill btn-pill--free" onClick={startGame}>
               Jogar de novo
             </button>
 

@@ -13,7 +13,7 @@ export function Credits() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          Matheus Benites
+          <span>Matheus Benites</span>
           <span className="credits-card__link-icon">
             <ArrowOutwardIcon />
           </span>

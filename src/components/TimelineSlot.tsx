@@ -10,8 +10,14 @@ interface Props {
   dotRef?: (el: HTMLSpanElement | null) => void
 }
 
+function slotState(slot: SlotType): 'past' | 'busy' | 'free' {
+  if (slot.isPast) return 'past'
+  if (slot.reservation) return 'busy'
+  return 'free'
+}
+
 export function TimelineSlot({ slot, onReserve, onCancel, dotRef }: Props) {
-  const state = slot.isPast ? 'past' : slot.reservation ? 'busy' : 'free'
+  const state = slotState(slot)
   const isOwn = state === 'busy' && isOwnReservation(slot.reservation!.id)
 
   return (
@@ -32,13 +38,13 @@ export function TimelineSlot({ slot, onReserve, onCancel, dotRef }: Props) {
 
         <div className="slot-card__action">
           {state === 'free' && (
-            <button className="btn-pill btn-pill--free" onClick={() => onReserve(slot)}>
+            <button type="button" className="btn-pill btn-pill--free" onClick={() => onReserve(slot)}>
               Reservar
             </button>
           )}
 
           {state === 'busy' && isOwn && (
-            <button className="btn-pill btn-pill--danger" onClick={() => onCancel(slot.reservation!)}>
+            <button type="button" className="btn-pill btn-pill--danger" onClick={() => onCancel(slot.reservation!)}>
               Cancelar
             </button>
           )}

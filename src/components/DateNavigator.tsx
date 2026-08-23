@@ -16,6 +16,7 @@ export function DateNavigator({ dayKey, offsetDays, maxOffsetDays, onChange, onO
   return (
     <div className="date-nav">
       <button
+        type="button"
         className="date-nav__btn"
         disabled={!canGoBack}
         onClick={() => onChange(offsetDays - 1)}
@@ -23,13 +24,14 @@ export function DateNavigator({ dayKey, offsetDays, maxOffsetDays, onChange, onO
       >
         <Icon name="chevron_left" />
       </button>
-      <button className="date-nav__label" onClick={onOpenPicker}>
+      <button type="button" className="date-nav__label" onClick={onOpenPicker}>
         <span className="date-nav__icon">
           <Icon name="calendar_today" />
         </span>
         {formatDateHeader(dayKey)}
       </button>
       <button
+        type="button"
         className="date-nav__btn"
         disabled={!canGoForward}
         onClick={() => onChange(offsetDays + 1)}

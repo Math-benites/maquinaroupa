@@ -25,7 +25,7 @@ export function RulesCard() {
           <li>Cancele pelo mesmo celular, se precisar</li>
         </ul>
       </div>
-      <button className="rules-banner__close" onClick={handleDismiss} aria-label="Fechar aviso">
+      <button type="button" className="rules-banner__close" onClick={handleDismiss} aria-label="Fechar aviso">
         <Icon name="close" />
       </button>
     </div>

@@ -19,6 +19,7 @@ export function BottomNav({ active, onChange }: Props) {
       {TABS.map((tab) => (
         <button
           key={tab.id}
+          type="button"
           className={`bottom-nav__btn ${active === tab.id ? 'bottom-nav__btn--active' : ''}`}
           onClick={() => onChange(tab.id)}
         >

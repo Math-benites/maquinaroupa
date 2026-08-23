@@ -4,5 +4,6 @@ interface Props {
 }
 
 export function Icon({ name, className }: Props) {
-  return <span className={`material-symbols-outlined${className ? ` ${className}` : ''}`}>{name}</span>
+  const classes = className ? `material-symbols-outlined ${className}` : 'material-symbols-outlined'
+  return <span className={classes}>{name}</span>
 }

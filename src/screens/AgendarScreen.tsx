@@ -98,8 +98,8 @@ export function AgendarScreen({ refreshKey, onReserved, onCancelRequest }: Props
 
       {!loading && error && (
         <div className="app-message app-message--error">
-          Não foi possível carregar a agenda.
-          <button className="retry-btn" onClick={loadReservations}>
+          <span>Não foi possível carregar a agenda.</span>
+          <button type="button" className="retry-btn" onClick={loadReservations}>
             Tentar novamente
           </button>
         </div>

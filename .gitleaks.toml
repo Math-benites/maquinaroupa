@@ -1,0 +1,13 @@
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+# A regra padrão "curl-auth-user" reage a qualquer "curl -u usuario:senha",
+# mesmo quando o valor é uma variável de ambiente (nunca um segredo literal).
+# Usamos exatamente esse padrão em ci.yml para autenticar na API do SonarCloud.
+[allowlist]
+description = "curl -u referenciando variavel de ambiente do SonarQube, nao um segredo literal"
+regexes = [
+  '''curl -s -u "\$SONAR_TOKEN:"''',
+]

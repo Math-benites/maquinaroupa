@@ -85,9 +85,9 @@ export function Timeline({ slots, onReserve, onCancel }: Props) {
 
   return (
     <div className="timeline" ref={containerRef}>
-      {segments.map((seg, i) => (
+      {segments.map((seg) => (
         <div
-          key={i}
+          key={`${seg.top}-${seg.color}`}
           className="timeline-progress-line"
           style={{ top: seg.top, left: seg.left, height: seg.height, background: seg.color }}
         />

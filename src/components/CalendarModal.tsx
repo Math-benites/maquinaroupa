@@ -39,8 +39,7 @@ export function CalendarModal({ offsetDays, maxOffsetDays, onSelect, onClose }: 
   const firstWeekday = new Date(viewYear, viewMonth - 1, 1).getDay()
   const totalDays = new Date(viewYear, viewMonth, 0).getDate()
 
-  const cells: (number | null)[] = []
-  for (let i = 0; i < firstWeekday; i++) cells.push(null)
+  const cells: number[] = []
   for (let d = 1; d <= totalDays; d++) cells.push(d)
 
   function goPrevMonth() {
@@ -66,16 +65,23 @@ export function CalendarModal({ offsetDays, maxOffsetDays, onSelect, onClose }: 
   const canGoPrev = viewedMonthUtc > todayMonthUtc
 
   return (
-    <div className="modal-overlay modal-overlay--center" onClick={onClose}>
-      <div className="calendar-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay modal-overlay--center">
+      <button type="button" className="modal-overlay__backdrop" aria-label="Fechar" onClick={onClose} />
+      <div className="calendar-modal">
         <div className="calendar-modal__header">
-          <button className="date-nav__btn" disabled={!canGoPrev} onClick={goPrevMonth} aria-label="Mês anterior">
+          <button
+            type="button"
+            className="date-nav__btn"
+            disabled={!canGoPrev}
+            onClick={goPrevMonth}
+            aria-label="Mês anterior"
+          >
             <Icon name="chevron_left" />
           </button>
           <span className="calendar-modal__title">
             {MONTH_LABELS[viewMonth - 1]} {viewYear}
           </span>
-          <button className="date-nav__btn" onClick={goNextMonth} aria-label="Próximo mês">
+          <button type="button" className="date-nav__btn" onClick={goNextMonth} aria-label="Próximo mês">
             <Icon name="chevron_right" />
           </button>
         </div>
@@ -88,10 +94,6 @@ export function CalendarModal({ offsetDays, maxOffsetDays, onSelect, onClose }: 
 
         <div className="calendar-modal__grid">
           {cells.map((day, i) => {
-            if (day === null) {
-              return <span key={i} className="calendar-modal__cell calendar-modal__cell--empty" />
-            }
-
             const cellUtc = Date.UTC(viewYear, viewMonth - 1, day)
             const offset = Math.round((cellUtc - todayUtc) / DAY_MS)
             const inRange = cellUtc >= todayUtc && cellUtc <= maxUtc
@@ -105,9 +107,11 @@ export function CalendarModal({ offsetDays, maxOffsetDays, onSelect, onClose }: 
 
             return (
               <button
-                key={i}
+                key={day}
+                type="button"
                 className={classes.join(' ')}
                 disabled={!inRange}
+                style={i === 0 ? { gridColumnStart: firstWeekday + 1 } : undefined}
                 onClick={() => {
                   onSelect(offset)
                   onClose()

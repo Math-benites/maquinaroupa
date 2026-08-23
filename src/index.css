@@ -33,7 +33,7 @@ body {
 }
 
 .material-symbols-outlined {
-  font-family: 'Material Symbols Outlined';
+  font-family: 'Material Symbols Outlined', sans-serif;
   font-weight: normal;
   font-style: normal;
   font-size: 22px;
@@ -973,8 +973,8 @@ body {
 }
 
 .rhythm-game__tile--d.rhythm-game__tile--active {
-  background: #f59e0b;
-  border-color: #f59e0b;
+  background: #92400e;
+  border-color: #92400e;
   color: white;
 }
 
@@ -1175,6 +1175,15 @@ body {
   z-index: 50;
 }
 
+.modal-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: default;
+}
+
 .modal-sheet {
   width: 100%;
   max-width: 500px;
@@ -1318,10 +1327,6 @@ body {
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
-}
-
-.calendar-modal__cell--empty {
-  cursor: default;
 }
 
 .calendar-modal__cell--today {
