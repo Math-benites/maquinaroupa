@@ -76,3 +76,11 @@ export function isEndingSoon(reservation: PublicReservation, thresholdMinutes: n
   const msRemaining = new Date(reservation.fim).getTime() - Date.now()
   return msRemaining > 0 && msRemaining <= thresholdMinutes * 60 * 1000
 }
+
+export function isPastReservation(reservation: PublicReservation): boolean {
+  return new Date(reservation.fim).getTime() <= Date.now()
+}
+
+export function isReservationHistorico(reservation: PublicReservation): boolean {
+  return reservation.cancelado_em !== null || isPastReservation(reservation)
+}

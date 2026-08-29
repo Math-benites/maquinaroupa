@@ -4,7 +4,6 @@ import {
   getOwnToken,
   isOwnReservation,
   markEndingSoonNotified,
-  removeOwnReservation,
   saveOwnReservation,
   wasEndingSoonNotified,
 } from './ownReservations'
@@ -35,20 +34,6 @@ describe('isOwnReservation', () => {
     saveOwnReservation('r1', 'token-abc')
     expect(isOwnReservation('r1')).toBe(true)
     expect(isOwnReservation('r2')).toBe(false)
-  })
-})
-
-describe('removeOwnReservation', () => {
-  it('remove o token, sem afetar outras reservas salvas', () => {
-    saveOwnReservation('r1', 'token-1')
-    saveOwnReservation('r2', 'token-2')
-    removeOwnReservation('r1')
-    expect(getOwnToken('r1')).toBeNull()
-    expect(getOwnToken('r2')).toBe('token-2')
-  })
-
-  it('não quebra ao remover um id que não existe', () => {
-    expect(() => removeOwnReservation('fantasma')).not.toThrow()
   })
 })
 

@@ -331,6 +331,13 @@ body {
 
 /* Section title */
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .section-title {
   display: flex;
   flex-direction: column;
@@ -448,6 +455,17 @@ body {
 
 .btn-pill--danger:active {
   background: var(--red-bg);
+}
+
+.btn-pill--neutral {
+  background: var(--blue-bg);
+  border: none;
+  color: var(--primary);
+}
+
+.btn-pill--neutral:active {
+  background: var(--primary-hover);
+  color: white;
 }
 
 .badge {
@@ -779,6 +797,22 @@ body {
 .own-card__apto {
   font-size: 0.9rem;
   color: var(--text);
+}
+
+.own-card--history {
+  opacity: 0.7;
+}
+
+.own-card__tag {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--red);
+  background: var(--red-bg);
+  border-radius: 8px;
+  padding: 6px 10px;
 }
 
 /* Ajuda */
@@ -1248,13 +1282,19 @@ body {
 .modal-sheet {
   width: 100%;
   max-width: 500px;
+  max-height: 85vh;
+  overflow-y: auto;
   background: var(--surface);
   border-radius: 20px 20px 0 0;
-  padding: 20px 20px 28px;
+  padding: 0 20px 28px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   animation: slide-up 0.2s ease-out;
+}
+
+.modal-sheet > .modal-title {
+  margin-top: 20px;
 }
 
 @keyframes slide-up {
@@ -1271,6 +1311,42 @@ body {
 .modal-title {
   margin: 0;
   font-size: 1.2rem;
+}
+
+.modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -20px;
+  padding: 20px 20px 10px;
+  border-radius: 20px 20px 0 0;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-header .modal-title {
+  flex: 1;
+}
+
+.modal-close-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--blue-bg);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-close-btn:active {
+  background: var(--border);
 }
 
 .modal-date {

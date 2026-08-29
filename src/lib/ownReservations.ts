@@ -23,12 +23,6 @@ export function getOwnToken(id: string): string | null {
   return readMap()[id] ?? null
 }
 
-export function removeOwnReservation(id: string) {
-  const map = readMap()
-  delete map[id]
-  writeMap(map)
-}
-
 export function isOwnReservation(id: string): boolean {
   return getOwnToken(id) !== null
 }

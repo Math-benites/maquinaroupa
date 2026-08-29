@@ -7,6 +7,8 @@ import {
   findNextAvailable,
   findNextReservationStart,
   isEndingSoon,
+  isPastReservation,
+  isReservationHistorico,
 } from './slots'
 import type { PublicReservation } from '../types/reservation'
 
@@ -22,6 +24,7 @@ function reservation(overrides: Partial<PublicReservation>): PublicReservation {
     inicio: new Date().toISOString(),
     fim: new Date().toISOString(),
     created_at: new Date().toISOString(),
+    cancelado_em: null,
     ...overrides,
   }
 }
@@ -155,6 +158,44 @@ describe('isEndingSoon', () => {
   it('true no limite exato do threshold', () => {
     const res = reservation({ fim: '2026-01-15T15:35:00.000Z' }) // faltam exatos 5min
     expect(isEndingSoon(res, 5)).toBe(true)
+  })
+})
+
+describe('isPastReservation', () => {
+  it('true quando a reserva já terminou', () => {
+    const res = reservation({ fim: '2026-01-15T15:29:00.000Z' }) // terminou ha 1min
+    expect(isPastReservation(res)).toBe(true)
+  })
+
+  it('true no instante exato do fim', () => {
+    const res = reservation({ fim: NOW.toISOString() })
+    expect(isPastReservation(res)).toBe(true)
+  })
+
+  it('false quando a reserva ainda não terminou', () => {
+    const res = reservation({ fim: '2026-01-15T15:31:00.000Z' }) // termina em 1min
+    expect(isPastReservation(res)).toBe(false)
+  })
+})
+
+describe('isReservationHistorico', () => {
+  it('true quando a reserva já terminou', () => {
+    const res = reservation({ fim: '2026-01-15T15:29:00.000Z' })
+    expect(isReservationHistorico(res)).toBe(true)
+  })
+
+  it('true quando a reserva foi cancelada, mesmo que ainda não tenha começado', () => {
+    const res = reservation({
+      inicio: '2026-01-15T18:00:00.000Z',
+      fim: '2026-01-15T19:00:00.000Z',
+      cancelado_em: '2026-01-15T15:00:00.000Z',
+    })
+    expect(isReservationHistorico(res)).toBe(true)
+  })
+
+  it('false para reserva futura e ativa', () => {
+    const res = reservation({ inicio: '2026-01-15T18:00:00.000Z', fim: '2026-01-15T19:00:00.000Z' })
+    expect(isReservationHistorico(res)).toBe(false)
   })
 })
 
