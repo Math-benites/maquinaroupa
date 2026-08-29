@@ -26,6 +26,8 @@ def writeSummary() {
             echo "  .card.ok { border-left-color:#2da44e; }"
             echo "  .card.fail { border-left-color:#cf222e; }"
             echo "  .card h2 { font-size:16px; margin:0 0 10px 0; display:flex; align-items:center; gap:8px; }"
+            echo "  .card h3 { font-size:13px; margin:14px 0 6px 0; padding-top:12px; border-top:1px solid #eaecef; color:#57606a; text-transform:uppercase; letter-spacing:.4px; }"
+            echo "  .card h3:first-of-type { border-top:none; padding-top:0; margin-top:0; }"
             echo "  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; }"
             echo "  .badge.ok { background:#dafbe1; color:#116329; }"
             echo "  .badge.fail { background:#ffebe9; color:#82071e; }"
@@ -56,7 +58,24 @@ def writeSummary() {
             echo "<div class=\\"meta\\"><span class=\\"result-pill ${RESULT_CLASS}\\">${RESULT}</span> &nbsp;Commit: <code>${GIT_COMMIT}</code> &nbsp;Branch: <code>${GIT_BRANCH}</code></div>"
             echo "</div>"
             echo "<div class=\\"cards\\">"
-            for f in ci-summary/01-build.html ci-summary/02-gitleaks.html ci-summary/03-trivy-repo.html ci-summary/04-docker-build.html ci-summary/05-slim.html ci-summary/06-verify-image.html ci-summary/07-trivy-image.html ci-summary/08-sonarqube.html ci-summary/09-zap.html ci-summary/10-publish.html; do
+            for f in ci-summary/01-build.html ci-summary/02-gitleaks.html ci-summary/03-trivy-repo.html ci-summary/04-docker-build.html; do
+                if [ -f "$f" ]; then
+                    cat "$f"
+                fi
+            done
+            if [ -f ci-summary/05a-status.txt ] || [ -f ci-summary/05b-status.txt ]; then
+                CARD_CLASS="ok"
+                if [ -f ci-summary/05a-status.txt ] && [ "$(cat ci-summary/05a-status.txt)" = "fail" ]; then CARD_CLASS="fail"; fi
+                if [ -f ci-summary/05b-status.txt ] && [ "$(cat ci-summary/05b-status.txt)" = "fail" ]; then CARD_CLASS="fail"; fi
+                ICON="&#9989;"
+                if [ "$CARD_CLASS" = "fail" ]; then ICON="&#10060;"; fi
+                echo "<div class=\\"card ${CARD_CLASS}\\">"
+                echo "<h2>${ICON} Imagem Otimizada (SlimToolkit + Trivy)</h2>"
+                if [ -f ci-summary/05a-body.html ]; then cat ci-summary/05a-body.html; else echo "<p><em>Aguardando SlimToolkit...</em></p>"; fi
+                if [ -f ci-summary/05b-body.html ]; then cat ci-summary/05b-body.html; else echo "<p><em>Aguardando Trivy image scan...</em></p>"; fi
+                echo "</div>"
+            fi
+            for f in ci-summary/08-sonarqube.html ci-summary/09-zap.html ci-summary/10-publish.html; do
                 if [ -f "$f" ]; then
                     cat "$f"
                 fi
@@ -299,8 +318,7 @@ HTMLEOF
                         FACTOR=$(grep -o "by='[0-9.]*X'" slim-output.txt 2>/dev/null | tail -1 | grep -o "[0-9.]*X" || echo "n/d")
 
                         {
-                            echo "<div class=\\"card ok\\">"
-                            echo "<h2>&#9989; Optimize Image (SlimToolkit)</h2>"
+                            echo "<h3>SlimToolkit</h3>"
                             echo "<p>Status: <span class=\\"badge ok\\">SUCESSO</span></p>"
                             echo "<table>"
                             echo "<tr><th>Imagem</th><th>Tamanho</th></tr>"
@@ -308,22 +326,21 @@ HTMLEOF
                             echo "<tr><td>Depois - <code>maquinaroupa:slim</code></td><td>${SLIM_SIZE}</td></tr>"
                             echo "</table>"
                             echo "<p>Reducao estimada: <strong>${REDUCTION}%</strong> &mdash; fator relatado pelo SlimToolkit: <strong>${FACTOR}</strong></p>"
-                            echo "</div>"
-                        } > "${WORKSPACE}/ci-summary/05-slim.html"
+                        } > "${WORKSPACE}/ci-summary/05a-body.html"
+                        echo "ok" > "${WORKSPACE}/ci-summary/05a-status.txt"
                     '''
                     script { writeSummary() }
                 }
                 failure {
                     sh '''
                         {
-                            echo "<div class=\\"card fail\\">"
-                            echo "<h2>&#10060; Optimize Image (SlimToolkit)</h2>"
+                            echo "<h3>SlimToolkit</h3>"
                             echo "<p>Status: <span class=\\"badge fail\\">FALHOU</span></p>"
                             echo "<pre>"
                             sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' slim-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
                             echo "</pre>"
-                            echo "</div>"
-                        } > "${WORKSPACE}/ci-summary/05-slim.html"
+                        } > "${WORKSPACE}/ci-summary/05a-body.html"
+                        echo "fail" > "${WORKSPACE}/ci-summary/05a-status.txt"
                     '''
                     script { writeSummary() }
                 }
@@ -360,34 +377,6 @@ HTMLEOF
                     exit $RC
                 '''
             }
-            post {
-                success {
-                    sh '''
-                        cat <<'HTMLEOF' > "${WORKSPACE}/ci-summary/06-verify-image.html"
-<div class="card ok">
-<h2>&#9989; Verify Optimized Image</h2>
-<p>Status: <span class="badge ok">SUCESSO</span></p>
-<p>Bundle estatico identico entre imagem original e otimizada, e nenhuma chave Supabase incorporada foi encontrada.</p>
-</div>
-HTMLEOF
-                    '''
-                    script { writeSummary() }
-                }
-                failure {
-                    sh '''
-                        {
-                            echo "<div class=\\"card fail\\">"
-                            echo "<h2>&#10060; Verify Optimized Image</h2>"
-                            echo "<p>Status: <span class=\\"badge fail\\">FALHOU</span></p>"
-                            echo "<pre>"
-                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' verify-image-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                            echo "</pre>"
-                            echo "</div>"
-                        } > "${WORKSPACE}/ci-summary/06-verify-image.html"
-                    '''
-                    script { writeSummary() }
-                }
-            }
         }
 
         stage('Trivy (optimized image scan)') {
@@ -409,28 +398,26 @@ HTMLEOF
                 success {
                     sh '''
                         {
-                            echo "<div class=\\"card ok\\">"
-                            echo "<h2>&#9989; Trivy Optimized Image Scan</h2>"
-                            echo "<p>Status: <span class=\\"badge ok\\">imagem sem vulnerabilidades HIGH/CRITICAL</span></p>"
+                            echo "<h3>Trivy Scan (imagem otimizada)</h3>"
+                            echo "<p>Status: <span class=\\"badge ok\\">sem vulnerabilidades HIGH/CRITICAL</span></p>"
                             echo "<pre>"
                             sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' trivy-image-report.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
                             echo "</pre>"
-                            echo "</div>"
-                        } > "${WORKSPACE}/ci-summary/07-trivy-image.html"
+                        } > "${WORKSPACE}/ci-summary/05b-body.html"
+                        echo "ok" > "${WORKSPACE}/ci-summary/05b-status.txt"
                     '''
                     script { writeSummary() }
                 }
                 failure {
                     sh '''
                         {
-                            echo "<div class=\\"card fail\\">"
-                            echo "<h2>&#10060; Trivy Optimized Image Scan</h2>"
-                            echo "<p>Status: <span class=\\"badge fail\\">vulnerabilidade(s) HIGH/CRITICAL detectada(s) na imagem</span></p>"
+                            echo "<h3>Trivy Scan (imagem otimizada)</h3>"
+                            echo "<p>Status: <span class=\\"badge fail\\">vulnerabilidade(s) HIGH/CRITICAL detectada(s)</span></p>"
                             echo "<pre>"
                             sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' trivy-image-report.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
                             echo "</pre>"
-                            echo "</div>"
-                        } > "${WORKSPACE}/ci-summary/07-trivy-image.html"
+                        } > "${WORKSPACE}/ci-summary/05b-body.html"
+                        echo "fail" > "${WORKSPACE}/ci-summary/05b-status.txt"
                     '''
                     script { writeSummary() }
                 }
