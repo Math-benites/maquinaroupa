@@ -11,5 +11,5 @@ services:
     image: maquinaroupa:local
     container_name: maquinaroupa-app
     ports:
-      - "${APP_PORT:-8080}:80"
+      - "${APP_PORT:-8080}:8080"
     restart: unless-stopped
