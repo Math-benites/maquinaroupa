@@ -48,12 +48,51 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trivy:
-    name: Container Security (ZAP + Trivy)
-    needs: [build, gitleaks]
+    name: Trivy (repository scan)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Trivy filesystem scan
+        id: trivy-fs-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          format: table
+          output: trivy-report.txt
+
+      - name: Publish Trivy repository summary
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.trivy-fs-scan.outcome }}
+        run: |
+          {
+            echo "## Trivy Repository Scan"
+            echo ""
+            if [ "$SCAN_OUTCOME" = "success" ]; then
+              echo "Status: ✅ nenhuma vulnerabilidade HIGH/CRITICAL ou segredo detectado."
+            else
+              echo "Status: ❌ o Trivy encontrou vulnerabilidades HIGH/CRITICAL ou segredos."
+            fi
+            echo ""
+            echo '```text'
+            cat trivy-report.txt 2>/dev/null || echo "Relatório não gerado; consulte os logs."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SCAN_OUTCOME" != "success" ]; then
+            exit 1
+          fi
+
+  container_image:
+    name: SlimToolkit + Trivy image
+    needs: [build, gitleaks, trivy]
+    runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'placeholder' }}
@@ -105,12 +144,76 @@ jobs:
             echo "Redução: **$REDUCTION%**"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Trivy optimized image scan
+        id: trivy-image-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: maquinaroupa:slim
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          format: table
+          output: trivy-image-report.txt
+
+      - name: Publish Trivy image summary
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.trivy-image-scan.outcome }}
+        run: |
+          {
+            echo "## Trivy Optimized Image Scan"
+            echo ""
+            if [ "$SCAN_OUTCOME" = "success" ]; then
+              echo "Status: ✅ imagem sem vulnerabilidades HIGH/CRITICAL."
+            else
+              echo "Status: ❌ o Trivy encontrou vulnerabilidades HIGH/CRITICAL na imagem."
+            fi
+            echo ""
+            echo '```text'
+            cat trivy-image-report.txt 2>/dev/null || echo "Relatório não gerado; consulte os logs."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SCAN_OUTCOME" != "success" ]; then
+            exit 1
+          fi
+
+      - name: Export verified image
+        run: docker save maquinaroupa:slim | zstd --threads=0 --quiet -o maquinaroupa-slim.tar.zst
+
+      - name: Upload verified image
+        uses: actions/upload-artifact@v4
+        with:
+          name: maquinaroupa-slim-${{ github.sha }}
+          path: maquinaroupa-slim.tar.zst
+          retention-days: 1
+          if-no-files-found: error
+
+  zap:
+    name: OWASP ZAP (DAST)
+    needs: container_image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download verified image
+        uses: actions/download-artifact@v4
+        with:
+          name: maquinaroupa-slim-${{ github.sha }}
+
+      - name: Load verified image
+        run: zstd --decompress --stdout maquinaroupa-slim.tar.zst | docker load
+
       - name: Start optimized application
         run: docker run --detach --name maquinaroupa-security --publish 8080:8080 maquinaroupa:slim
 
       - name: Wait for optimized application
         run: |
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl --silent --fail http://127.0.0.1:8080/ > /dev/null; then
               exit 0
             fi
@@ -176,67 +279,6 @@ jobs:
             echo "O relatório HTML completo está no artefato \`zap-report\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Trivy filesystem scan
-        id: trivy-fs-scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-          ignore-unfixed: true
-          format: table
-          output: trivy-report.txt
-
-      - name: Trivy optimized image scan
-        id: trivy-image-scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: maquinaroupa:slim
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-          ignore-unfixed: true
-          format: table
-          output: trivy-image-report.txt
-
-      - name: Publish Trivy summary
-        if: always()
-        env:
-          TRIVY_FS_OUTCOME: ${{ steps.trivy-fs-scan.outcome }}
-          TRIVY_IMAGE_OUTCOME: ${{ steps.trivy-image-scan.outcome }}
-        run: |
-          {
-            echo "## Trivy Security Report"
-            echo ""
-            if [ "$TRIVY_FS_OUTCOME" = "success" ] && [ "$TRIVY_IMAGE_OUTCOME" = "success" ]; then
-              echo "Status: ✅ nenhuma vulnerabilidade HIGH/CRITICAL ou segredo detectado."
-            else
-              echo "Status: ❌ o Trivy encontrou vulnerabilidades HIGH/CRITICAL ou segredos."
-            fi
-            echo ""
-            echo "### Repositório"
-            echo ""
-            echo '```text'
-            if [ -f trivy-report.txt ]; then
-              cat trivy-report.txt
-            else
-              echo "O arquivo de relatório não foi gerado. Consulte os logs do scan."
-            fi
-            echo '```'
-            echo ""
-            echo "### Imagem otimizada"
-            echo ""
-            echo '```text'
-            if [ -f trivy-image-report.txt ]; then
-              cat trivy-image-report.txt
-            else
-              echo "O arquivo de relatório da imagem não foi gerado. Consulte os logs do scan."
-            fi
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload ZAP report
         if: always()
         uses: actions/upload-artifact@v4
@@ -254,8 +296,6 @@ jobs:
         env:
           ZAP_EXIT_CODE: ${{ steps.zap-summary.outputs.scan_exit_code }}
           ZAP_HIGH: ${{ steps.zap-summary.outputs.high }}
-          TRIVY_FS_OUTCOME: ${{ steps.trivy-fs-scan.outcome }}
-          TRIVY_IMAGE_OUTCOME: ${{ steps.trivy-image-scan.outcome }}
         run: |
           FAILED=0
 
@@ -264,11 +304,6 @@ jobs:
             FAILED=1
           elif [ "$ZAP_HIGH" -gt 0 ]; then
             echo "::error::OWASP ZAP encontrou $ZAP_HIGH alerta(s) de risco alto."
-            FAILED=1
-          fi
-
-          if [ "$TRIVY_FS_OUTCOME" != "success" ] || [ "$TRIVY_IMAGE_OUTCOME" != "success" ]; then
-            echo "::error::Trivy encontrou problemas de segurança. Consulte o Job Summary."
             FAILED=1
           fi
 
@@ -350,7 +385,7 @@ jobs:
           set -e
           TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
           STATUS="PENDING"
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             STATUS=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status')
             echo "status=$STATUS"
             if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
@@ -415,7 +450,7 @@ jobs:
 
   checkov:
     name: Checkov (IaC security scan)
-    needs: [trivy, sonarqube]
+    needs: [zap, sonarqube]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
