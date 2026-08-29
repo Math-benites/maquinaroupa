@@ -2,8 +2,6 @@
 
 App mobile-first pra reservar horário na lavanderia do condomínio Santa Monica, sem cadastro e sem senha. Acesso via QR code fixado na lavanderia — cada aparelho (celular) reconhece suas próprias reservas por um token salvo localmente, sem login.
 
-**Em produção:** [lavanderia.infrastack.com.br](https://lavanderia.infrastack.com.br)
-
 ## Como funciona
 
 1. **Escolha um horário livre** na aba Agendar — a agenda mostra o dia atual com uma linha do tempo dos horários.
