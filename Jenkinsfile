@@ -341,6 +341,92 @@ HTMLEOF
                 }
             }
         }
+        stage('SonarQube') {
+            steps {
+                dir('sonarqube') {
+                    checkout scm
+                    sh '''
+                        (
+                            sonar-scanner \
+                                -Dsonar.host.url="${SONAR_HOST_URL}" \
+                                -Dsonar.token="${SONAR_TOKEN}"
+
+                            TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
+                            STATUS="PENDING"
+                            for _ in $(seq 1 30); do
+                                STATUS=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/ce/task?id=${TASK_ID}" | jq -r '.task.status')
+                                echo "status=$STATUS"
+                                if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
+                                    break
+                                fi
+                                sleep 5
+                            done
+                            if [ "$STATUS" != "SUCCESS" ]; then
+                                echo "Processamento da analise terminou com status $STATUS"
+                                exit 1
+                            fi
+
+                            ISSUES_JSON=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities")
+                            ISSUES=$(echo "$ISSUES_JSON" | jq -r '.total')
+                            BLOCKER=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="BLOCKER").count] | first) // 0')
+                            CRITICAL=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="CRITICAL").count] | first) // 0')
+                            MAJOR=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="MAJOR").count] | first) // 0')
+                            HOTSPOTS=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/hotspots/search?projectKey=${SONAR_PROJECT_KEY}&status=TO_REVIEW&ps=1" | jq -r '.paging.total')
+
+                            echo "BLOCKER=$BLOCKER" > sonar-result.env
+                            echo "CRITICAL=$CRITICAL" >> sonar-result.env
+                            echo "MAJOR=$MAJOR" >> sonar-result.env
+                            echo "HOTSPOTS=$HOTSPOTS" >> sonar-result.env
+                            echo "DASHBOARD=${SONAR_HOST_URL}/dashboard?id=${SONAR_PROJECT_KEY}" >> sonar-result.env
+
+                            echo "Issues MAJOR ou piores: $ISSUES"
+                            echo "Security hotspots pendentes: $HOTSPOTS"
+                            if [ "$ISSUES" -gt 0 ] || [ "$HOTSPOTS" -gt 0 ]; then
+                                echo "SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes."
+                                exit 1
+                            fi
+                        ) > sonar-output.txt 2>&1
+                        RC=$?
+                        cat sonar-output.txt
+                        exit $RC
+                    '''
+                }
+            }
+            post {
+                success {
+                    sh '''
+                        . sonarqube/sonar-result.env 2>/dev/null || true
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; SonarQube</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">sem issues MAJOR+ e sem hotspots pendentes</span></p>"
+                            echo "<table>"
+                            echo "<tr><th>Metrica</th><th>Resultado</th></tr>"
+                            echo "<tr><td>Blocker</td><td>${BLOCKER:-0}</td></tr>"
+                            echo "<tr><td>Critical</td><td>${CRITICAL:-0}</td></tr>"
+                            echo "<tr><td>Major</td><td>${MAJOR:-0}</td></tr>"
+                            echo "<tr><td>Security hotspots pendentes</td><td>${HOTSPOTS:-0}</td></tr>"
+                            echo "</table>"
+                            echo "<p><a href=\\"${DASHBOARD}\\" target=\\"_blank\\">Ver dashboard completo no SonarCloud</a></p>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
+                    '''
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; SonarQube</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">issues MAJOR+ ou hotspots pendentes encontrados</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' sonarqube/sonar-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
+                    '''
+                }
+            }
+        }
     }
 
     post {
@@ -378,7 +464,7 @@ HTMLEOF
                     echo "<body>"
                     echo "<h1>CI Summary &mdash; ${JOB_NAME} #${BUILD_NUMBER}</h1>"
                     echo "<div class=\\"meta\\">Resultado geral: <strong>${RESULT}</strong> &nbsp;|&nbsp; Commit: <code>${GIT_COMMIT}</code> &nbsp;|&nbsp; Branch: ${GIT_BRANCH}</div>"
-                    for f in ci-summary/01-build.html ci-summary/02-gitleaks.html ci-summary/03-trivy-repo.html ci-summary/04-docker-build.html ci-summary/05-slim.html ci-summary/06-verify-image.html ci-summary/07-trivy-image.html; do
+                    for f in ci-summary/01-build.html ci-summary/02-gitleaks.html ci-summary/03-trivy-repo.html ci-summary/04-docker-build.html ci-summary/05-slim.html ci-summary/06-verify-image.html ci-summary/07-trivy-image.html ci-summary/08-sonarqube.html; do
                         if [ -f "$f" ]; then
                             cat "$f"
                         fi
