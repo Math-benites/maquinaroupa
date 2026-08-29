@@ -38,6 +38,42 @@ npm run build    # typecheck + build de produção
 
 Precisa de um `.env` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (veja `.env.example`).
 
+## Docker local
+
+Com Docker instalado e o `.env` preenchido:
+
+```bash
+docker compose -f IAC/docker-compose.yml --env-file .env up --build
+```
+
+O app sobe em `http://localhost:8080` por padrão. Para trocar a porta:
+
+```bash
+APP_PORT=8082 docker compose -f IAC/docker-compose.yml --env-file .env up --build
+```
+
+## Terraform com Docker
+
+Terraform usa arquivos `.tf` (HCL), não YAML. O exemplo em `IAC/terraform/` provisiona localmente a imagem e o container Docker do app.
+
+```bash
+cd IAC/terraform
+cp terraform.tfvars.example terraform.tfvars
+terraform init
+terraform plan
+terraform apply
+```
+
+Por padrão, o Terraform lê `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` do `.env` na raiz do projeto. Use `terraform.tfvars` apenas para trocar `app_port`, `env_file` ou sobrescrever variáveis. Por padrão, o app do Terraform sobe em `http://localhost:8081`.
+
+Antes do primeiro `terraform apply`, crie a imagem local:
+
+```bash
+docker build --file ../Dockerfile --tag maquinaroupa:terraform --build-arg SUPABASE_URL --build-arg SUPABASE_ANON ../..
+```
+
+Se preferir, use o Compose da raiz para buildar/rodar o app em `8080`, e o Terraform para praticar o provisionamento do container em `8081`.
+
 ## Branches
 
 - `master` — roda o pipeline completo (CI + deploy). O fluxo esperado é sempre via PR (sem branch protection configurada ainda, então isso não é bloqueado pelo GitHub).
