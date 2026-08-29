@@ -99,11 +99,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate production build configuration
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - name: Validate build configuration
         run: |
           if [ "$SUPABASE_URL" = "https://placeholder.supabase.co" ] || [ "$SUPABASE_ANON" = "placeholder" ]; then
-            echo "Supabase configuration is required before publishing the production image."
+            echo "::error::A configuração do Supabase é obrigatória para construir uma imagem funcional."
+            exit 1
+          fi
+
+          if [[ ! "$SUPABASE_URL" =~ ^https://[a-z0-9-]+\.supabase\.co$ ]]; then
+            echo "::error::VITE_SUPABASE_URL não contém uma URL válida do Supabase."
+            exit 1
+          fi
+
+          if [[ "$SUPABASE_ANON" =~ ^https?:// ]]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY contém uma URL; confira se URL e chave foram trocadas."
             exit 1
           fi
 
