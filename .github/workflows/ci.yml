@@ -91,7 +91,7 @@ jobs:
 
   container_image:
     name: SlimToolkit + Trivy image
-    needs: [build, gitleaks, trivy]
+    needs: [build, gitleaks, trivy, checkov]
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://placeholder.supabase.co' }}
@@ -194,9 +194,6 @@ jobs:
     name: OWASP ZAP (DAST)
     needs: container_image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v7
 
@@ -309,45 +306,6 @@ jobs:
 
           exit "$FAILED"
 
-      - name: Login to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish verified image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        id: publish-image
-        run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
-          SHA_TAG="$IMAGE:$GITHUB_SHA"
-          LATEST_TAG="$IMAGE:latest"
-
-          docker tag maquinaroupa:slim "$SHA_TAG"
-          docker tag maquinaroupa:slim "$LATEST_TAG"
-          docker push "$SHA_TAG"
-          docker push "$LATEST_TAG"
-
-          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
-          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Publish registry summary
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        env:
-          SHA_TAG: ${{ steps.publish-image.outputs.sha_tag }}
-          LATEST_TAG: ${{ steps.publish-image.outputs.latest_tag }}
-        run: |
-          {
-            echo "## Published Container Image"
-            echo ""
-            echo "| Tag | Uso |"
-            echo "|---|---|"
-            echo "| \`$SHA_TAG\` | Deploy imutável recomendado |"
-            echo "| \`$LATEST_TAG\` | Referência conveniente para testes |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
   sonarqube:
     name: SonarQube
     needs: [build, gitleaks]
@@ -450,7 +408,6 @@ jobs:
 
   checkov:
     name: Checkov (IaC security scan)
-    needs: [zap, sonarqube]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -520,3 +477,56 @@ jobs:
             echo "::error::Checkov encontrou problemas de segurança. Consulte o Job Summary."
             exit 1
           fi
+
+  publish:
+    name: Publish verified image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [zap, sonarqube, checkov]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download verified image
+        uses: actions/download-artifact@v4
+        with:
+          name: maquinaroupa-slim-${{ github.sha }}
+
+      - name: Load verified image
+        run: zstd --decompress --stdout maquinaroupa-slim.tar.zst | docker load
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish SHA and latest tags
+        id: publish-image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          SHA_TAG="$IMAGE:$GITHUB_SHA"
+          LATEST_TAG="$IMAGE:latest"
+
+          docker tag maquinaroupa:slim "$SHA_TAG"
+          docker tag maquinaroupa:slim "$LATEST_TAG"
+          docker push "$SHA_TAG"
+          docker push "$LATEST_TAG"
+
+          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish registry summary
+        env:
+          SHA_TAG: ${{ steps.publish-image.outputs.sha_tag }}
+          LATEST_TAG: ${{ steps.publish-image.outputs.latest_tag }}
+        run: |
+          {
+            echo "## Published Container Image"
+            echo ""
+            echo "| Tag | Uso |"
+            echo "|---|---|"
+            echo "| \`$SHA_TAG\` | Deploy imutável recomendado |"
+            echo "| \`$LATEST_TAG\` | Referência conveniente para testes |"
+          } >> "$GITHUB_STEP_SUMMARY"
