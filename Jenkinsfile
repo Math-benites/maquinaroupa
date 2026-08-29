@@ -1,4 +1,4 @@
-def rebuildSummary() {
+def writeSummary() {
     env.BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
     sh '''
         mkdir -p ci-summary
@@ -66,6 +66,9 @@ def rebuildSummary() {
             echo "</html>"
         } > ci-summary/summary.html
     '''
+}
+
+def publishSummary() {
     publishHTML target: [
         allowMissing: true,
         alwaysLinkToLastBuild: true,
@@ -118,7 +121,7 @@ pipeline {
 </div>
 HTMLEOF
                             '''
-                            script { rebuildSummary() }
+                            script { writeSummary() }
                         }
                         failure {
                             sh '''
@@ -130,7 +133,7 @@ HTMLEOF
 </div>
 HTMLEOF
                             '''
-                            script { rebuildSummary() }
+                            script { writeSummary() }
                         }
                     }
                 }
@@ -157,7 +160,7 @@ HTMLEOF
 </div>
 HTMLEOF
                             '''
-                            script { rebuildSummary() }
+                            script { writeSummary() }
                         }
                         failure {
                             sh '''
@@ -171,7 +174,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/02-gitleaks.html"
                             '''
-                            script { rebuildSummary() }
+                            script { writeSummary() }
                         }
                     }
                 }
@@ -207,7 +210,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/03-trivy-repo.html"
                             '''
-                            script { rebuildSummary() }
+                            script { writeSummary() }
                         }
                         failure {
                             sh '''
@@ -221,7 +224,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/03-trivy-repo.html"
                             '''
-                            script { rebuildSummary() }
+                            script { writeSummary() }
                         }
                     }
                 }
@@ -253,7 +256,7 @@ HTMLEOF
 </div>
 HTMLEOF
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
                 failure {
                     sh '''
@@ -265,7 +268,7 @@ HTMLEOF
 </div>
 HTMLEOF
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
             }
         }
@@ -308,7 +311,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/05-slim.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
                 failure {
                     sh '''
@@ -322,7 +325,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/05-slim.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
             }
         }
@@ -368,7 +371,7 @@ HTMLEOF
 </div>
 HTMLEOF
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
                 failure {
                     sh '''
@@ -382,7 +385,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/06-verify-image.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
             }
         }
@@ -415,7 +418,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/07-trivy-image.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
                 failure {
                     sh '''
@@ -429,7 +432,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/07-trivy-image.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
             }
         }
@@ -504,7 +507,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
                 failure {
                     sh '''
@@ -518,7 +521,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
                     '''
-                    script { rebuildSummary() }
+                    script { writeSummary() }
                 }
             }
         }
@@ -526,7 +529,10 @@ HTMLEOF
 
     post {
         always {
-            script { rebuildSummary() }
+            script {
+                writeSummary()
+                publishSummary()
+            }
         }
     }
 }
