@@ -17,7 +17,7 @@ resource "docker_container" "app" {
   image = var.image_name
 
   ports {
-    internal = 80
+    internal = 8080
     external = var.app_port + count.index
   }
 
