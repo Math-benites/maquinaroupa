@@ -87,5 +87,51 @@ pipeline {
                 '''
             }
         }
+
+        stage('Verify Optimized Image') {
+            steps {
+                sh '''
+                    FAT_CONTAINER=$(docker create maquinaroupa:ci)
+                    SLIM_CONTAINER=$(docker create maquinaroupa:slim)
+                    mkdir -p bundle-fat bundle-slim
+                    docker cp "$FAT_CONTAINER:/usr/share/nginx/html/." bundle-fat/
+                    docker cp "$SLIM_CONTAINER:/usr/share/nginx/html/." bundle-slim/
+                    docker rm -f "$FAT_CONTAINER" "$SLIM_CONTAINER"
+
+                    if ! diff --recursive --brief bundle-fat bundle-slim; then
+                        echo "ERRO: SlimToolkit removeu ou alterou arquivos do bundle estatico."
+                        exit 1
+                    fi
+
+                    if grep --recursive --extended-regexp \
+                        'eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}|sb_publishable_[A-Za-z0-9_-]+' \
+                        bundle-slim; then
+                        echo "ERRO: imagem contem uma chave Supabase incorporada."
+                        exit 1
+                    fi
+
+                    rm -rf bundle-fat bundle-slim
+                '''
+            }
+        }
+
+        stage('Trivy (optimized image scan)') {
+            steps {
+                sh '''
+                    trivy image \
+                        --severity CRITICAL,HIGH \
+                        --exit-code 1 \
+                        --ignore-unfixed \
+                        --format table \
+                        -o trivy-image-report.txt \
+                        maquinaroupa:slim
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-image-report.txt', allowEmptyArchive: true
+                }
+            }
+        }
     }
 }
