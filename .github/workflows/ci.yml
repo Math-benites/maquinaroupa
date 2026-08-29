@@ -53,8 +53,43 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Build Docker image
+        run: |
+          docker build \
+            --file IAC/Dockerfile \
+            --tag maquinaroupa:ci \
+            --build-arg SUPABASE_URL=https://placeholder.supabase.co \
+            --build-arg SUPABASE_ANON=placeholder \
+            .
+      - name: Optimize image with SlimToolkit
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: true
+        with:
+          target: maquinaroupa:ci
+          tag: slim
+
+      - name: Publish image compression summary
+        run: |
+          ORIGINAL_BYTES=$(docker image inspect maquinaroupa:ci --format '{{.Size}}')
+          SLIM_BYTES=$(docker image inspect maquinaroupa:slim --format '{{.Size}}')
+          ORIGINAL_SIZE=$(numfmt --to=iec-i --suffix=B "$ORIGINAL_BYTES")
+          SLIM_SIZE=$(numfmt --to=iec-i --suffix=B "$SLIM_BYTES")
+          REDUCTION=$(awk -v original="$ORIGINAL_BYTES" -v slim="$SLIM_BYTES" 'BEGIN { printf "%.1f", (1 - slim / original) * 100 }')
+
+          {
+            echo "## Docker Image Compression"
+            echo ""
+            echo "| Imagem | Tamanho |"
+            echo "|---|---:|"
+            echo "| Antes - \`maquinaroupa:ci\` | $ORIGINAL_SIZE |"
+            echo "| Depois - \`maquinaroupa:slim\` | $SLIM_SIZE |"
+            echo ""
+            echo "Redução: **$REDUCTION%**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Trivy filesystem scan
-        id: trivy-scan
+        id: trivy-fs-scan
         continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -66,19 +101,34 @@ jobs:
           format: table
           output: trivy-report.txt
 
+      - name: Trivy optimized image scan
+        id: trivy-image-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: maquinaroupa:slim
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          format: table
+          output: trivy-image-report.txt
+
       - name: Publish Trivy summary
         if: always()
         env:
-          TRIVY_OUTCOME: ${{ steps.trivy-scan.outcome }}
+          TRIVY_FS_OUTCOME: ${{ steps.trivy-fs-scan.outcome }}
+          TRIVY_IMAGE_OUTCOME: ${{ steps.trivy-image-scan.outcome }}
         run: |
           {
             echo "## Trivy Security Report"
             echo ""
-            if [ "$TRIVY_OUTCOME" = "success" ]; then
+            if [ "$TRIVY_FS_OUTCOME" = "success" ] && [ "$TRIVY_IMAGE_OUTCOME" = "success" ]; then
               echo "Status: ✅ nenhuma vulnerabilidade HIGH/CRITICAL ou segredo detectado."
             else
               echo "Status: ❌ o Trivy encontrou vulnerabilidades HIGH/CRITICAL ou segredos."
             fi
+            echo ""
+            echo "### Repositório"
             echo ""
             echo '```text'
             if [ -f trivy-report.txt ]; then
@@ -87,9 +137,19 @@ jobs:
               echo "O arquivo de relatório não foi gerado. Consulte os logs do scan."
             fi
             echo '```'
+            echo ""
+            echo "### Imagem otimizada"
+            echo ""
+            echo '```text'
+            if [ -f trivy-image-report.txt ]; then
+              cat trivy-image-report.txt
+            else
+              echo "O arquivo de relatório da imagem não foi gerado. Consulte os logs do scan."
+            fi
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$TRIVY_OUTCOME" != "success" ]; then
+          if [ "$TRIVY_FS_OUTCOME" != "success" ] || [ "$TRIVY_IMAGE_OUTCOME" != "success" ]; then
             echo "::error::Trivy encontrou problemas de segurança. Consulte o Job Summary."
             exit 1
           fi
