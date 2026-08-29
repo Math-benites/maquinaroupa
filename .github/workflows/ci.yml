@@ -160,3 +160,16 @@ jobs:
             echo "::error::SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes. Veja $DASH"
             exit 1
           fi
+  checkov:
+    name: Checkov (IaC security scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Checkov scan
+        run: pip install checkov
+      - name: Run Checkov
+        run: checkov \
+          --directory . \
+          --compact \
+          --quiet 

@@ -23,3 +23,7 @@ resource "docker_container" "app" {
 
   restart = "unless-stopped"
 }
+
+locals {
+  teste_secret_key = "sk_test_51ABCDEF1234567890abcdefghijklmnop_fakechave"
+}
