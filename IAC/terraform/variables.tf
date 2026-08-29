@@ -4,6 +4,12 @@ variable "image_name" {
   default     = "ghcr.io/math-benites/maquinaroupa:latest"
 }
 
+variable "pull_image" {
+  description = "Baixa a imagem do registry. Use false para consumir uma imagem que já existe no Docker local."
+  type        = bool
+  default     = true
+}
+
 variable "container_name" {
   description = "Nome do container Docker criado pelo Terraform."
   type        = string

@@ -1,3 +1,4 @@
 image_name   = "ghcr.io/math-benites/maquinaroupa:substitua-pelo-sha-do-commit"
+pull_image   = true
 app_port     = 8081
 app_replicas = 1

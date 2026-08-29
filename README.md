@@ -74,6 +74,15 @@ app_replicas = 1
 
 Em pull requests, o CI apenas valida a imagem. Após merge na `master`, a imagem aprovada pelo SlimToolkit, ZAP e Trivy é publicada no GHCR com as tags do commit e `latest`. Por padrão, o app do Terraform sobe em `http://localhost:8081`.
 
+Para testar uma imagem que já existe no Docker local, use:
+
+```hcl
+image_name = "maquinaroupa:slim"
+pull_image = false
+```
+
+Com `pull_image = true`, o Terraform baixa `image_name` do registry. Com `false`, ele exige que a imagem já esteja carregada no Docker local.
+
 ## Branches
 
 - `master` — roda o pipeline completo (CI + deploy). O fluxo esperado é sempre via PR (sem branch protection configurada ainda, então isso não é bloqueado pelo GitHub).

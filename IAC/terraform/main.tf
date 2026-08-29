@@ -12,14 +12,24 @@ terraform {
 provider "docker" {}
 
 resource "docker_image" "app" {
+  count        = var.pull_image ? 1 : 0
   name         = var.image_name
   keep_locally = true
+}
+
+data "docker_image" "app" {
+  count = var.pull_image ? 0 : 1
+  name  = var.image_name
+}
+
+locals {
+  app_image_id = var.pull_image ? docker_image.app[0].image_id : data.docker_image.app[0].id
 }
 
 resource "docker_container" "app" {
   count = var.app_replicas
   name  = "${var.container_name}-${count.index + 1}"
-  image = docker_image.app.image_id
+  image = local.app_image_id
 
   ports {
     internal = 8080
