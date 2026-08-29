@@ -73,5 +73,17 @@ pipeline {
                 }
             }
         }
+
+        stage('Optimize Image (SlimToolkit)') {
+            steps {
+                sh '''
+                    slim build \
+                        --target maquinaroupa:ci \
+                        --tag maquinaroupa:slim \
+                        --http-probe \
+                        --preserve-path /usr/share/nginx/html
+                '''
+            }
+        }
     }
 }
