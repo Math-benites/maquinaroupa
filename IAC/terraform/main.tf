@@ -43,3 +43,4 @@ resource "docker_container" "app" {
 
   restart = "unless-stopped"
 }
+
