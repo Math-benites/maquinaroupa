@@ -1,7 +1,3 @@
-env_file = "../../.env"
-app_port = 8081
-
-# O Terraform le VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY do .env por padrao.
-# Use as linhas abaixo somente se quiser sobrescrever os valores do .env.
-# vite_supabase_url      = "https://seu-projeto.supabase.co"
-# vite_supabase_anon_key = "sua-anon-key"
+image_name   = "ghcr.io/math-benites/maquinaroupa:substitua-pelo-sha-do-commit"
+app_port     = 8081
+app_replicas = 1

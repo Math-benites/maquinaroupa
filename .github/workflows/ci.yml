@@ -51,16 +51,32 @@ jobs:
     name: Container Security (ZAP + Trivy)
     needs: [build, gitleaks]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+      SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'placeholder' }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Validate production build configuration
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          if [ "$SUPABASE_URL" = "https://placeholder.supabase.co" ] || [ "$SUPABASE_ANON" = "placeholder" ]; then
+            echo "Supabase configuration is required before publishing the production image."
+            exit 1
+          fi
 
       - name: Build Docker image
         run: |
           docker build \
             --file IAC/Dockerfile \
             --tag maquinaroupa:ci \
-            --build-arg SUPABASE_URL=https://placeholder.supabase.co \
-            --build-arg SUPABASE_ANON=placeholder \
+            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --build-arg SUPABASE_URL="$SUPABASE_URL" \
+            --build-arg SUPABASE_ANON="$SUPABASE_ANON" \
             .
       - name: Optimize image with SlimToolkit
         uses: kitabisa/docker-slim-action@v1
@@ -257,6 +273,45 @@ jobs:
           fi
 
           exit "$FAILED"
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish verified image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: publish-image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          SHA_TAG="$IMAGE:$GITHUB_SHA"
+          LATEST_TAG="$IMAGE:latest"
+
+          docker tag maquinaroupa:slim "$SHA_TAG"
+          docker tag maquinaroupa:slim "$LATEST_TAG"
+          docker push "$SHA_TAG"
+          docker push "$LATEST_TAG"
+
+          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish registry summary
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          SHA_TAG: ${{ steps.publish-image.outputs.sha_tag }}
+          LATEST_TAG: ${{ steps.publish-image.outputs.latest_tag }}
+        run: |
+          {
+            echo "## Published Container Image"
+            echo ""
+            echo "| Tag | Uso |"
+            echo "|---|---|"
+            echo "| \`$SHA_TAG\` | Deploy imutável recomendado |"
+            echo "| \`$LATEST_TAG\` | Referência conveniente para testes |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   sonarqube:
     name: SonarQube

@@ -54,7 +54,7 @@ APP_PORT=8082 docker compose -f IAC/docker-compose.yml --env-file .env up --buil
 
 ## Terraform com Docker
 
-Terraform usa arquivos `.tf` (HCL), não YAML. O exemplo em `IAC/terraform/` provisiona localmente a imagem e o container Docker do app.
+Terraform usa arquivos `.tf` (HCL), não YAML. O exemplo em `IAC/terraform/` baixa uma imagem Docker local ou do GHCR e provisiona os containers do app.
 
 ```bash
 cd IAC/terraform
@@ -64,15 +64,15 @@ terraform plan
 terraform apply
 ```
 
-Por padrão, o Terraform lê `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` do `.env` na raiz do projeto. Use `terraform.tfvars` apenas para trocar `app_port`, `env_file` ou sobrescrever variáveis. Por padrão, o app do Terraform sobe em `http://localhost:8081`.
+No `terraform.tfvars`, use preferencialmente a tag imutável publicada pelo CI:
 
-Antes do primeiro `terraform apply`, crie a imagem local:
-
-```bash
-docker build --file ../Dockerfile --tag maquinaroupa:terraform --build-arg SUPABASE_URL --build-arg SUPABASE_ANON ../..
+```hcl
+image_name   = "ghcr.io/math-benites/maquinaroupa:SHA_DO_COMMIT"
+app_port     = 8081
+app_replicas = 1
 ```
 
-Se preferir, use o Compose da raiz para buildar/rodar o app em `8080`, e o Terraform para praticar o provisionamento do container em `8081`.
+Em pull requests, o CI apenas valida a imagem. Após merge na `master`, a imagem aprovada pelo SlimToolkit, ZAP e Trivy é publicada no GHCR com as tags do commit e `latest`. Por padrão, o app do Terraform sobe em `http://localhost:8081`.
 
 ## Branches
 

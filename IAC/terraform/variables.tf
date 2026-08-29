@@ -1,7 +1,7 @@
 variable "image_name" {
-  description = "Nome da imagem Docker local criada pelo Terraform."
+  description = "Imagem Docker local ou publicada em um registry. Para deploys, prefira uma tag imutável pelo SHA do commit."
   type        = string
-  default     = "maquinaroupa:terraform"
+  default     = "ghcr.io/math-benites/maquinaroupa:latest"
 }
 
 variable "container_name" {
