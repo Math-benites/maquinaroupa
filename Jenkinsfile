@@ -75,7 +75,7 @@ def writeSummary() {
                 if [ -f ci-summary/05b-body.html ]; then cat ci-summary/05b-body.html; else echo "<p><em>Aguardando Trivy image scan...</em></p>"; fi
                 echo "</div>"
             fi
-            for f in ci-summary/08-sonarqube.html ci-summary/09-zap.html ci-summary/10-publish.html; do
+            for f in ci-summary/08-sonarqube.html ci-summary/09-checkov.html ci-summary/10-zap.html ci-summary/11-publish.html; do
                 if [ -f "$f" ]; then
                     cat "$f"
                 fi
@@ -507,6 +507,51 @@ HTMLEOF
                             echo "</pre>"
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
+
+        stage('Checkov (IaC security scan)') {
+            steps {
+                dir('checkov') {
+                    checkout scm
+                    sh '''
+                        checkov \
+                            --directory . \
+                            --compact \
+                            --skip-framework terraform_plan \
+                            > checkov-output.txt 2>&1
+                        RC=$?
+                        cat checkov-output.txt
+                        exit $RC
+                    '''
+                }
+            }
+            post {
+                success {
+                    sh '''
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; Checkov (IaC security scan)</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">nenhuma politica de seguranca violada</span></p>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/09-checkov.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; Checkov (IaC security scan)</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">violacoes ou erros de analise encontrados</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' checkov/checkov-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/09-checkov.html"
                     '''
                     script { writeSummary() }
                 }
