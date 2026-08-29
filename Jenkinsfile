@@ -77,6 +77,7 @@ pipeline {
         stage('Optimize Image (SlimToolkit)') {
             steps {
                 sh '''
+                    export DOCKER_API_VERSION=1.44
                     slim build \
                         --target maquinaroupa:ci \
                         --tag maquinaroupa:slim \
