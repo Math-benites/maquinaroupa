@@ -57,5 +57,20 @@ pipeline {
                 }
             }
         }
+
+        stage('Build Docker Image') {
+            steps {
+                dir('docker-build') {
+                    checkout scm
+                    sh '''
+                        docker build \
+                            --file IAC/Dockerfile \
+                            --tag maquinaroupa:ci \
+                            --label org.opencontainers.image.revision="${GIT_COMMIT}" \
+                            .
+                    '''
+                }
+            }
+        }
     }
 }
