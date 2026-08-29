@@ -1,3 +1,81 @@
+def rebuildSummary() {
+    env.BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
+    sh '''
+        mkdir -p ci-summary
+        RESULT="${BUILD_RESULT:-EM ANDAMENTO}"
+        {
+            echo "<!DOCTYPE html>"
+            echo "<html lang=\\"pt-BR\\">"
+            echo "<head>"
+            echo "<meta charset=\\"utf-8\\">"
+            echo "<title>CI Summary - ${JOB_NAME} #${BUILD_NUMBER}</title>"
+            echo "<style>"
+            echo "  * { box-sizing:border-box; }"
+            echo "  body { font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; background:linear-gradient(180deg,#f6f8fb 0%,#eef1f6 100%); color:#1b1f23; margin:0; padding:32px 24px 60px; }"
+            echo "  .hero { background:linear-gradient(135deg,#1f2430 0%,#2d3446 60%,#3a2f55 100%); color:#fff; border-radius:14px; padding:28px 32px; margin-bottom:28px; box-shadow:0 8px 24px rgba(20,20,40,0.25); animation:fadeSlideDown .5s ease both; }"
+            echo "  .hero h1 { font-size:24px; margin:0 0 10px 0; letter-spacing:.2px; }"
+            echo "  .meta { color:#c7cbe0; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 4px; align-items:center; }"
+            echo "  .meta code { background:rgba(255,255,255,0.12); color:#fff; }"
+            echo "  .result-pill { display:inline-block; padding:3px 14px; border-radius:20px; font-size:12px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }"
+            echo "  .result-pill.success { background:#2da44e; color:#fff; }"
+            echo "  .result-pill.failure, .result-pill.unstable { background:#cf222e; color:#fff; }"
+            echo "  .result-pill.em, .result-pill.andamento { background:#9a6700; color:#fff; }"
+            echo "  .cards { display:flex; flex-direction:column; gap:16px; }"
+            echo "  .card { background:#ffffff; border-radius:10px; box-shadow:0 1px 2px rgba(20,20,40,0.06), 0 8px 20px rgba(20,20,40,0.05); padding:18px 22px; border-left:6px solid #8a8f98; opacity:0; transform:translateY(14px); animation:fadeSlideUp .45s ease forwards; transition:box-shadow .2s ease, transform .2s ease; }"
+            echo "  .card:hover { box-shadow:0 2px 6px rgba(20,20,40,0.08), 0 14px 28px rgba(20,20,40,0.10); transform:translateY(-2px); }"
+            echo "  .card.ok { border-left-color:#2da44e; }"
+            echo "  .card.fail { border-left-color:#cf222e; }"
+            echo "  .card h2 { font-size:16px; margin:0 0 10px 0; display:flex; align-items:center; gap:8px; }"
+            echo "  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; }"
+            echo "  .badge.ok { background:#dafbe1; color:#116329; }"
+            echo "  .badge.fail { background:#ffebe9; color:#82071e; }"
+            echo "  table { border-collapse:collapse; margin:10px 0; width:100%; max-width:520px; }"
+            echo "  th, td { border:1px solid #d0d7de; padding:7px 14px; text-align:left; font-size:13px; }"
+            echo "  th { background:#f6f8fa; }"
+            echo "  pre { background:#0d1117; color:#c9d1d9; padding:12px 14px; border-radius:8px; overflow-x:auto; font-size:12px; max-height:420px; }"
+            echo "  code { background:#eef0f2; padding:1px 6px; border-radius:4px; font-size:12px; }"
+            echo "  a { color:#0969da; }"
+            echo "  @keyframes fadeSlideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }"
+            echo "  @keyframes fadeSlideUp { to { opacity:1; transform:translateY(0); } }"
+            echo "  .cards .card:nth-child(1) { animation-delay:.15s; }"
+            echo "  .cards .card:nth-child(2) { animation-delay:.23s; }"
+            echo "  .cards .card:nth-child(3) { animation-delay:.31s; }"
+            echo "  .cards .card:nth-child(4) { animation-delay:.39s; }"
+            echo "  .cards .card:nth-child(5) { animation-delay:.47s; }"
+            echo "  .cards .card:nth-child(6) { animation-delay:.55s; }"
+            echo "  .cards .card:nth-child(7) { animation-delay:.63s; }"
+            echo "  .cards .card:nth-child(8) { animation-delay:.71s; }"
+            echo "  .cards .card:nth-child(9) { animation-delay:.79s; }"
+            echo "  .cards .card:nth-child(10) { animation-delay:.87s; }"
+            echo "</style>"
+            echo "</head>"
+            echo "<body>"
+            RESULT_CLASS=$(echo "$RESULT" | tr '[:upper:]' '[:lower:]' | tr -c '[:alnum:]' '-')
+            echo "<div class=\\"hero\\">"
+            echo "<h1>CI Summary &mdash; ${JOB_NAME} #${BUILD_NUMBER}</h1>"
+            echo "<div class=\\"meta\\"><span class=\\"result-pill ${RESULT_CLASS}\\">${RESULT}</span> &nbsp;Commit: <code>${GIT_COMMIT}</code> &nbsp;Branch: <code>${GIT_BRANCH}</code></div>"
+            echo "</div>"
+            echo "<div class=\\"cards\\">"
+            for f in ci-summary/01-build.html ci-summary/02-gitleaks.html ci-summary/03-trivy-repo.html ci-summary/04-docker-build.html ci-summary/05-slim.html ci-summary/06-verify-image.html ci-summary/07-trivy-image.html ci-summary/08-sonarqube.html ci-summary/09-zap.html ci-summary/10-publish.html; do
+                if [ -f "$f" ]; then
+                    cat "$f"
+                fi
+            done
+            echo "</div>"
+            echo "</body>"
+            echo "</html>"
+        } > ci-summary/summary.html
+    '''
+    publishHTML target: [
+        allowMissing: true,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: 'ci-summary',
+        reportFiles: 'summary.html',
+        reportName: 'CI Summary'
+    ]
+}
+
 pipeline {
     agent { label 'docker' }
 
@@ -40,6 +118,7 @@ pipeline {
 </div>
 HTMLEOF
                             '''
+                            script { rebuildSummary() }
                         }
                         failure {
                             sh '''
@@ -51,6 +130,7 @@ HTMLEOF
 </div>
 HTMLEOF
                             '''
+                            script { rebuildSummary() }
                         }
                     }
                 }
@@ -77,6 +157,7 @@ HTMLEOF
 </div>
 HTMLEOF
                             '''
+                            script { rebuildSummary() }
                         }
                         failure {
                             sh '''
@@ -90,6 +171,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/02-gitleaks.html"
                             '''
+                            script { rebuildSummary() }
                         }
                     }
                 }
@@ -125,6 +207,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/03-trivy-repo.html"
                             '''
+                            script { rebuildSummary() }
                         }
                         failure {
                             sh '''
@@ -138,6 +221,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/03-trivy-repo.html"
                             '''
+                            script { rebuildSummary() }
                         }
                     }
                 }
@@ -169,6 +253,7 @@ HTMLEOF
 </div>
 HTMLEOF
                     '''
+                    script { rebuildSummary() }
                 }
                 failure {
                     sh '''
@@ -180,6 +265,7 @@ HTMLEOF
 </div>
 HTMLEOF
                     '''
+                    script { rebuildSummary() }
                 }
             }
         }
@@ -222,6 +308,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/05-slim.html"
                     '''
+                    script { rebuildSummary() }
                 }
                 failure {
                     sh '''
@@ -235,6 +322,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/05-slim.html"
                     '''
+                    script { rebuildSummary() }
                 }
             }
         }
@@ -280,6 +368,7 @@ HTMLEOF
 </div>
 HTMLEOF
                     '''
+                    script { rebuildSummary() }
                 }
                 failure {
                     sh '''
@@ -293,6 +382,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/06-verify-image.html"
                     '''
+                    script { rebuildSummary() }
                 }
             }
         }
@@ -325,6 +415,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/07-trivy-image.html"
                     '''
+                    script { rebuildSummary() }
                 }
                 failure {
                     sh '''
@@ -338,9 +429,11 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/07-trivy-image.html"
                     '''
+                    script { rebuildSummary() }
                 }
             }
         }
+
         stage('SonarQube') {
             steps {
                 dir('sonarqube') {
@@ -411,6 +504,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
                     '''
+                    script { rebuildSummary() }
                 }
                 failure {
                     sh '''
@@ -424,6 +518,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
                     '''
+                    script { rebuildSummary() }
                 }
             }
         }
@@ -431,80 +526,7 @@ HTMLEOF
 
     post {
         always {
-            script {
-                env.BUILD_RESULT = currentBuild.currentResult
-            }
-            sh '''
-                mkdir -p ci-summary
-                RESULT="${BUILD_RESULT:-UNKNOWN}"
-                {
-                    echo "<!DOCTYPE html>"
-                    echo "<html lang=\\"pt-BR\\">"
-                    echo "<head>"
-                    echo "<meta charset=\\"utf-8\\">"
-                    echo "<title>CI Summary - ${JOB_NAME} #${BUILD_NUMBER}</title>"
-                    echo "<style>"
-                    echo "  * { box-sizing:border-box; }"
-                    echo "  body { font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; background:linear-gradient(180deg,#f6f8fb 0%,#eef1f6 100%); color:#1b1f23; margin:0; padding:32px 24px 60px; }"
-                    echo "  .hero { background:linear-gradient(135deg,#1f2430 0%,#2d3446 60%,#3a2f55 100%); color:#fff; border-radius:14px; padding:28px 32px; margin-bottom:28px; box-shadow:0 8px 24px rgba(20,20,40,0.25); animation:fadeSlideDown .5s ease both; }"
-                    echo "  .hero h1 { font-size:24px; margin:0 0 10px 0; letter-spacing:.2px; }"
-                    echo "  .meta { color:#c7cbe0; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 4px; align-items:center; }"
-                    echo "  .meta code { background:rgba(255,255,255,0.12); color:#fff; }"
-                    echo "  .result-pill { display:inline-block; padding:3px 14px; border-radius:20px; font-size:12px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }"
-                    echo "  .result-pill.success { background:#2da44e; color:#fff; }"
-                    echo "  .result-pill.failure, .result-pill.unstable { background:#cf222e; color:#fff; }"
-                    echo "  .cards { display:flex; flex-direction:column; gap:16px; }"
-                    echo "  .card { background:#ffffff; border-radius:10px; box-shadow:0 1px 2px rgba(20,20,40,0.06), 0 8px 20px rgba(20,20,40,0.05); padding:18px 22px; border-left:6px solid #8a8f98; opacity:0; transform:translateY(14px); animation:fadeSlideUp .45s ease forwards; transition:box-shadow .2s ease, transform .2s ease; }"
-                    echo "  .card:hover { box-shadow:0 2px 6px rgba(20,20,40,0.08), 0 14px 28px rgba(20,20,40,0.10); transform:translateY(-2px); }"
-                    echo "  .card.ok { border-left-color:#2da44e; }"
-                    echo "  .card.fail { border-left-color:#cf222e; }"
-                    echo "  .card h2 { font-size:16px; margin:0 0 10px 0; display:flex; align-items:center; gap:8px; }"
-                    echo "  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; }"
-                    echo "  .badge.ok { background:#dafbe1; color:#116329; }"
-                    echo "  .badge.fail { background:#ffebe9; color:#82071e; }"
-                    echo "  table { border-collapse:collapse; margin:10px 0; width:100%; max-width:520px; }"
-                    echo "  th, td { border:1px solid #d0d7de; padding:7px 14px; text-align:left; font-size:13px; }"
-                    echo "  th { background:#f6f8fa; }"
-                    echo "  pre { background:#0d1117; color:#c9d1d9; padding:12px 14px; border-radius:8px; overflow-x:auto; font-size:12px; max-height:420px; }"
-                    echo "  code { background:#eef0f2; padding:1px 6px; border-radius:4px; font-size:12px; }"
-                    echo "  a { color:#0969da; }"
-                    echo "  @keyframes fadeSlideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }"
-                    echo "  @keyframes fadeSlideUp { to { opacity:1; transform:translateY(0); } }"
-                    echo "  .cards .card:nth-child(1) { animation-delay:.15s; }"
-                    echo "  .cards .card:nth-child(2) { animation-delay:.23s; }"
-                    echo "  .cards .card:nth-child(3) { animation-delay:.31s; }"
-                    echo "  .cards .card:nth-child(4) { animation-delay:.39s; }"
-                    echo "  .cards .card:nth-child(5) { animation-delay:.47s; }"
-                    echo "  .cards .card:nth-child(6) { animation-delay:.55s; }"
-                    echo "  .cards .card:nth-child(7) { animation-delay:.63s; }"
-                    echo "  .cards .card:nth-child(8) { animation-delay:.71s; }"
-                    echo "</style>"
-                    echo "</head>"
-                    echo "<body>"
-                    RESULT_CLASS=$(echo "$RESULT" | tr '[:upper:]' '[:lower:]')
-                    echo "<div class=\\"hero\\">"
-                    echo "<h1>CI Summary &mdash; ${JOB_NAME} #${BUILD_NUMBER}</h1>"
-                    echo "<div class=\\"meta\\"><span class=\\"result-pill ${RESULT_CLASS}\\">${RESULT}</span> &nbsp;Commit: <code>${GIT_COMMIT}</code> &nbsp;Branch: <code>${GIT_BRANCH}</code></div>"
-                    echo "</div>"
-                    echo "<div class=\\"cards\\">"
-                    for f in ci-summary/01-build.html ci-summary/02-gitleaks.html ci-summary/03-trivy-repo.html ci-summary/04-docker-build.html ci-summary/05-slim.html ci-summary/06-verify-image.html ci-summary/07-trivy-image.html ci-summary/08-sonarqube.html; do
-                        if [ -f "$f" ]; then
-                            cat "$f"
-                        fi
-                    done
-                    echo "</div>"
-                    echo "</body>"
-                    echo "</html>"
-                } > ci-summary/summary.html
-            '''
-            publishHTML target: [
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'ci-summary',
-                reportFiles: 'summary.html',
-                reportName: 'CI Summary'
-            ]
+            script { rebuildSummary() }
         }
     }
 }
