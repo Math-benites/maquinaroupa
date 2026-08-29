@@ -198,11 +198,45 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Checkov scan
+      - name: Install Checkov
         run: pip install checkov
+
       - name: Run Checkov
+        id: checkov-scan
         run: |
+          set +e
           checkov \
-          --directory . \
-          --compact \
-          --quiet
+            --directory . \
+            --compact \
+            2>&1 | tee checkov-report.txt
+          CHECKOV_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$CHECKOV_EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish Checkov summary
+        if: always()
+        env:
+          CHECKOV_EXIT_CODE: ${{ steps.checkov-scan.outputs.exit_code }}
+        run: |
+          {
+            echo "## Checkov IaC Security Report"
+            echo ""
+            if [ "$CHECKOV_EXIT_CODE" = "0" ]; then
+              echo "Status: ✅ nenhuma política de segurança foi violada."
+            else
+              echo "Status: ❌ o Checkov encontrou violações ou erros de análise."
+            fi
+            echo ""
+            echo '```text'
+            if [ -f checkov-report.txt ]; then
+              cat checkov-report.txt
+            else
+              echo "O arquivo de relatório não foi gerado. Consulte os logs do scan."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$CHECKOV_EXIT_CODE" != "0" ]; then
+            echo "::error::Checkov encontrou problemas de segurança. Consulte o Job Summary."
+            exit 1
+          fi
