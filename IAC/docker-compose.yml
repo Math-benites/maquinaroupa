@@ -1,0 +1,15 @@
+name: maquinaroupa
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: IAC/Dockerfile
+    image: maquinaroupa:local
+    container_name: maquinaroupa-app
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?VITE_SUPABASE_URL is required}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?VITE_SUPABASE_ANON_KEY is required}
+    restart: unless-stopped

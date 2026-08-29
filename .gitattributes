@@ -1,0 +1,5 @@
+# Forca LF em todo arquivo de texto, independente do autocrlf do Windows.
+# Sem isso, um clone com core.autocrlf=true converte scripts shell (ex:
+# IAC/docker/40-runtime-config.sh) para CRLF no checkout, e o Docker COPY
+# leva isso direto pro container Linux - "#!/bin/sh\r" quebra o entrypoint.
+* text=auto eol=lf

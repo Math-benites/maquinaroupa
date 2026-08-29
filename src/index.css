@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./assets/material-symbols-outlined.woff2') format('woff2');
+}
+
 :root {
   --bg: #f4f5f7;
   --surface: #ffffff;

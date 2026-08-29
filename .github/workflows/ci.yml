@@ -13,9 +13,6 @@ jobs:
   build:
     name: Build & Lint
     runs-on: ubuntu-latest
-    env:
-      VITE_SUPABASE_URL: https://placeholder.supabase.co
-      VITE_SUPABASE_ANON_KEY: placeholder
     steps:
       - uses: actions/checkout@v7
 
@@ -48,12 +45,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trivy:
-    name: Trivy (dependency vulnerabilities)
+    name: Trivy (repository scan)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - name: Trivy filesystem scan
+        id: trivy-fs-scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -61,9 +60,285 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
+          format: table
+          output: trivy-report.txt
+
+      - name: Publish Trivy repository summary
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.trivy-fs-scan.outcome }}
+        run: |
+          {
+            echo "## Trivy Repository Scan"
+            echo ""
+            if [ "$SCAN_OUTCOME" = "success" ]; then
+              echo "Status: ✅ nenhuma vulnerabilidade HIGH/CRITICAL ou segredo detectado."
+            else
+              echo "Status: ❌ o Trivy encontrou vulnerabilidades HIGH/CRITICAL ou segredos."
+            fi
+            echo ""
+            echo '```text'
+            cat trivy-report.txt 2>/dev/null || echo "Relatório não gerado; consulte os logs."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SCAN_OUTCOME" != "success" ]; then
+            exit 1
+          fi
+
+  container_image:
+    name: SlimToolkit + Trivy image
+    needs: [build, gitleaks, trivy, checkov]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --file IAC/Dockerfile \
+            --tag maquinaroupa:ci \
+            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            .
+      - name: Optimize image with SlimToolkit
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: true
+          DSLIM_PRESERVE_PATH: /usr/share/nginx/html
+        with:
+          target: maquinaroupa:ci
+          tag: slim
+
+      - name: Verify static bundle integrity
+        run: |
+          FAT_CONTAINER=$(docker create maquinaroupa:ci)
+          SLIM_CONTAINER=$(docker create maquinaroupa:slim)
+          trap 'docker rm -f "$FAT_CONTAINER" "$SLIM_CONTAINER" >/dev/null 2>&1 || true' EXIT
+
+          mkdir -p bundle-fat bundle-slim
+          docker cp "$FAT_CONTAINER:/usr/share/nginx/html/." bundle-fat/
+          docker cp "$SLIM_CONTAINER:/usr/share/nginx/html/." bundle-slim/
+
+          if ! diff --recursive --brief bundle-fat bundle-slim; then
+            echo "::error::SlimToolkit removeu ou alterou arquivos do bundle estático."
+            exit 1
+          fi
+
+      - name: Verify image contains no Supabase keys
+        run: |
+          if grep --recursive --extended-regexp \
+            'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}|sb_publishable_[A-Za-z0-9_-]+' \
+            bundle-slim; then
+            echo "::error::A imagem contém uma chave Supabase incorporada."
+            exit 1
+          fi
+
+      - name: Publish image compression summary
+        run: |
+          ORIGINAL_BYTES=$(docker image inspect maquinaroupa:ci --format '{{.Size}}')
+          SLIM_BYTES=$(docker image inspect maquinaroupa:slim --format '{{.Size}}')
+          ORIGINAL_SIZE=$(numfmt --to=iec-i --suffix=B "$ORIGINAL_BYTES")
+          SLIM_SIZE=$(numfmt --to=iec-i --suffix=B "$SLIM_BYTES")
+          REDUCTION=$(awk -v original="$ORIGINAL_BYTES" -v slim="$SLIM_BYTES" 'BEGIN { printf "%.1f", (1 - slim / original) * 100 }')
+
+          {
+            echo "## Docker Image Compression"
+            echo ""
+            echo "| Imagem | Tamanho |"
+            echo "|---|---:|"
+            echo "| Antes - \`maquinaroupa:ci\` | $ORIGINAL_SIZE |"
+            echo "| Depois - \`maquinaroupa:slim\` | $SLIM_SIZE |"
+            echo ""
+            echo "Redução: **$REDUCTION%**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy optimized image scan
+        id: trivy-image-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: maquinaroupa:slim
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          format: table
+          output: trivy-image-report.txt
+
+      - name: Publish Trivy image summary
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.trivy-image-scan.outcome }}
+        run: |
+          {
+            echo "## Trivy Optimized Image Scan"
+            echo ""
+            if [ "$SCAN_OUTCOME" = "success" ]; then
+              echo "Status: ✅ imagem sem vulnerabilidades HIGH/CRITICAL."
+            else
+              echo "Status: ❌ o Trivy encontrou vulnerabilidades HIGH/CRITICAL na imagem."
+            fi
+            echo ""
+            echo '```text'
+            cat trivy-image-report.txt 2>/dev/null || echo "Relatório não gerado; consulte os logs."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SCAN_OUTCOME" != "success" ]; then
+            exit 1
+          fi
+
+      - name: Export verified image
+        run: docker save maquinaroupa:slim | zstd --threads=0 --quiet -o maquinaroupa-slim.tar.zst
+
+      - name: Upload verified image
+        uses: actions/upload-artifact@v4
+        with:
+          name: maquinaroupa-slim-${{ github.sha }}
+          path: maquinaroupa-slim.tar.zst
+          retention-days: 1
+          if-no-files-found: error
+
+  zap:
+    name: OWASP ZAP (DAST)
+    needs: container_image
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download verified image
+        uses: actions/download-artifact@v4
+        with:
+          name: maquinaroupa-slim-${{ github.sha }}
+
+      - name: Load verified image
+        run: zstd --decompress --stdout maquinaroupa-slim.tar.zst | docker load
+
+      - name: Validate runtime configuration
+        run: |
+          if [[ ! "$SUPABASE_URL" =~ ^https://[a-z0-9-]+\.supabase\.co$ ]]; then
+            echo "::error::VITE_SUPABASE_URL não contém uma URL válida do Supabase."
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_ANON" ] || [[ "$SUPABASE_ANON" =~ ^https?:// ]]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY está ausente ou contém uma URL."
+            exit 1
+          fi
+
+      - name: Start optimized application
+        run: |
+          docker run --detach \
+            --name maquinaroupa-security \
+            --publish 8080:8080 \
+            --env VITE_SUPABASE_URL="$SUPABASE_URL" \
+            --env VITE_SUPABASE_ANON_KEY="$SUPABASE_ANON" \
+            maquinaroupa:slim
+
+      - name: Wait for optimized application
+        run: |
+          for _ in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8080/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs maquinaroupa-security
+          echo "::error::A imagem otimizada não respondeu antes do timeout."
+          exit 1
+
+      - name: Run ZAP baseline scan
+        id: zap-scan
+        run: |
+          mkdir -p zap-report
+          chmod 777 zap-report
+          set +e
+          docker run --rm \
+            --network host \
+            --volume "$GITHUB_WORKSPACE/zap-report:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t http://127.0.0.1:8080 \
+              -J zap-report.json \
+              -r zap-report.html \
+              -I
+          ZAP_EXIT_CODE=$?
+          echo "exit_code=$ZAP_EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish ZAP summary
+        id: zap-summary
+        if: always()
+        env:
+          ZAP_EXIT_CODE: ${{ steps.zap-scan.outputs.exit_code }}
+        run: |
+          REPORT="zap-report/zap-report.json"
+          HIGH=0
+          MEDIUM=0
+          LOW=0
+          INFORMATIONAL=0
+
+          if [ -f "$REPORT" ]; then
+            HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode == "3")] | length' "$REPORT")
+            MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode == "2")] | length' "$REPORT")
+            LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode == "1")] | length' "$REPORT")
+            INFORMATIONAL=$(jq '[.site[]?.alerts[]? | select(.riskcode == "0")] | length' "$REPORT")
+          fi
+
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "scan_exit_code=${ZAP_EXIT_CODE:-missing}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## OWASP ZAP DAST Report"
+            echo ""
+            echo "Imagem testada: \`maquinaroupa:slim\`"
+            echo ""
+            echo "| Risco | Alertas |"
+            echo "|---|---:|"
+            echo "| Alto | $HIGH |"
+            echo "| Médio | $MEDIUM |"
+            echo "| Baixo | $LOW |"
+            echo "| Informativo | $INFORMATIONAL |"
+            echo ""
+            echo "O relatório HTML completo está no artefato \`zap-report\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report/
+          if-no-files-found: warn
+
+      - name: Stop optimized application
+        if: always()
+        run: docker rm --force maquinaroupa-security 2>/dev/null || true
+
+      - name: Security gate
+        if: always()
+        env:
+          ZAP_EXIT_CODE: ${{ steps.zap-summary.outputs.scan_exit_code }}
+          ZAP_HIGH: ${{ steps.zap-summary.outputs.high }}
+        run: |
+          FAILED=0
+
+          if [ "$ZAP_EXIT_CODE" = "missing" ] || [ "$ZAP_EXIT_CODE" -gt 1 ]; then
+            echo "::error::O scan do ZAP não foi concluído corretamente."
+            FAILED=1
+          elif [ "$ZAP_HIGH" -gt 0 ]; then
+            echo "::error::OWASP ZAP encontrou $ZAP_HIGH alerta(s) de risco alto."
+            FAILED=1
+          fi
+
+          exit "$FAILED"
 
   sonarqube:
     name: SonarQube
+    needs: [build, gitleaks]
     runs-on: ubuntu-latest
     environment: sonarqubekey
     steps:
@@ -98,7 +373,7 @@ jobs:
           set -e
           TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
           STATUS="PENDING"
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             STATUS=$(curl -s -H "Authorization: Bearer $SONAR_TOKEN" "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status')
             echo "status=$STATUS"
             if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
@@ -160,3 +435,128 @@ jobs:
             echo "::error::SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes. Veja $DASH"
             exit 1
           fi
+
+  checkov:
+    name: Checkov (IaC security scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Run Checkov
+        id: checkov-scan
+        run: |
+          set +e
+          checkov \
+            --directory . \
+            --compact \
+            --skip-framework terraform_plan \
+            2>&1 | tee checkov-report.txt
+          CHECKOV_EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$CHECKOV_EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish Checkov summary
+        if: always()
+        env:
+          CHECKOV_EXIT_CODE: ${{ steps.checkov-scan.outputs.exit_code }}
+        run: |
+          {
+            echo "## Checkov IaC Security Report"
+            echo ""
+            if [ "$CHECKOV_EXIT_CODE" = "0" ]; then
+              echo "Status: ✅ nenhuma política de segurança foi violada."
+            else
+              echo "Status: ❌ o Checkov encontrou violações ou erros de análise."
+            fi
+            echo ""
+            echo "### Resumo"
+            echo ""
+            echo '```text'
+            if [ -f checkov-report.txt ]; then
+              awk '
+                / scan results:$/ {
+                  print $0
+                  getline
+                  print $0
+                  next
+                }
+                /^Check:/ {
+                  last_check = $0
+                  next
+                }
+                /FAILED for resource:/ {
+                  print ""
+                  print last_check
+                  print $0
+                  getline
+                  print $0
+                }
+              ' checkov-report.txt
+            else
+              echo "O arquivo de relatório não foi gerado. Consulte os logs do scan."
+            fi
+            echo '```'
+            echo ""
+            echo "[Ver logs completos desta execução]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$CHECKOV_EXIT_CODE" != "0" ]; then
+            echo "::error::Checkov encontrou problemas de segurança. Consulte o Job Summary."
+            exit 1
+          fi
+
+  publish:
+    name: Publish verified image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [zap, sonarqube, checkov]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download verified image
+        uses: actions/download-artifact@v4
+        with:
+          name: maquinaroupa-slim-${{ github.sha }}
+
+      - name: Load verified image
+        run: zstd --decompress --stdout maquinaroupa-slim.tar.zst | docker load
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish SHA and latest tags
+        id: publish-image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          SHA_TAG="$IMAGE:$GITHUB_SHA"
+          LATEST_TAG="$IMAGE:latest"
+
+          docker tag maquinaroupa:slim "$SHA_TAG"
+          docker tag maquinaroupa:slim "$LATEST_TAG"
+          docker push "$SHA_TAG"
+          docker push "$LATEST_TAG"
+
+          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish registry summary
+        env:
+          SHA_TAG: ${{ steps.publish-image.outputs.sha_tag }}
+          LATEST_TAG: ${{ steps.publish-image.outputs.latest_tag }}
+        run: |
+          {
+            echo "## Published Container Image"
+            echo ""
+            echo "| Tag | Uso |"
+            echo "|---|---|"
+            echo "| \`$SHA_TAG\` | Deploy imutável recomendado |"
+            echo "| \`$LATEST_TAG\` | Referência conveniente para testes |"
+          } >> "$GITHUB_STEP_SUMMARY"
