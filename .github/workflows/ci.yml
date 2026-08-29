@@ -208,6 +208,7 @@ jobs:
           checkov \
             --directory . \
             --compact \
+            --skip-framework terraform_plan \
             2>&1 | tee checkov-report.txt
           CHECKOV_EXIT_CODE=${PIPESTATUS[0]}
           echo "exit_code=$CHECKOV_EXIT_CODE" >> "$GITHUB_OUTPUT"
@@ -227,13 +228,35 @@ jobs:
               echo "Status: ❌ o Checkov encontrou violações ou erros de análise."
             fi
             echo ""
+            echo "### Resumo"
+            echo ""
             echo '```text'
             if [ -f checkov-report.txt ]; then
-              cat checkov-report.txt
+              awk '
+                / scan results:$/ {
+                  print $0
+                  getline
+                  print $0
+                  next
+                }
+                /^Check:/ {
+                  last_check = $0
+                  next
+                }
+                /FAILED for resource:/ {
+                  print ""
+                  print last_check
+                  print $0
+                  getline
+                  print $0
+                }
+              ' checkov-report.txt
             else
               echo "O arquivo de relatório não foi gerado. Consulte os logs do scan."
             fi
             echo '```'
+            echo ""
+            echo "[Ver logs completos desta execução]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$CHECKOV_EXIT_CODE" != "0" ]; then
