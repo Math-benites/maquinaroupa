@@ -13,9 +13,6 @@ jobs:
   build:
     name: Build & Lint
     runs-on: ubuntu-latest
-    env:
-      VITE_SUPABASE_URL: https://placeholder.supabase.co
-      VITE_SUPABASE_ANON_KEY: placeholder
     steps:
       - uses: actions/checkout@v7
 
@@ -93,28 +90,8 @@ jobs:
     name: SlimToolkit + Trivy image
     needs: [build, gitleaks, trivy, checkov]
     runs-on: ubuntu-latest
-    env:
-      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-      SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'placeholder' }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Validate build configuration
-        run: |
-          if [ "$SUPABASE_URL" = "https://placeholder.supabase.co" ] || [ "$SUPABASE_ANON" = "placeholder" ]; then
-            echo "::error::A configuração do Supabase é obrigatória para construir uma imagem funcional."
-            exit 1
-          fi
-
-          if [[ ! "$SUPABASE_URL" =~ ^https://[a-z0-9-]+\.supabase\.co$ ]]; then
-            echo "::error::VITE_SUPABASE_URL não contém uma URL válida do Supabase."
-            exit 1
-          fi
-
-          if [[ "$SUPABASE_ANON" =~ ^https?:// ]]; then
-            echo "::error::VITE_SUPABASE_ANON_KEY contém uma URL; confira se URL e chave foram trocadas."
-            exit 1
-          fi
 
       - name: Build Docker image
         run: |
@@ -123,14 +100,12 @@ jobs:
             --tag maquinaroupa:ci \
             --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.revision="$GITHUB_SHA" \
-            --build-arg SUPABASE_URL="$SUPABASE_URL" \
-            --build-arg SUPABASE_ANON="$SUPABASE_ANON" \
             .
       - name: Optimize image with SlimToolkit
         uses: kitabisa/docker-slim-action@v1
         env:
           DSLIM_HTTP_PROBE: true
-          DSLIM_INCLUDE_PATH: /usr/share/nginx/html
+          DSLIM_PRESERVE_PATH: /usr/share/nginx/html
         with:
           target: maquinaroupa:ci
           tag: slim
@@ -147,6 +122,15 @@ jobs:
 
           if ! diff --recursive --brief bundle-fat bundle-slim; then
             echo "::error::SlimToolkit removeu ou alterou arquivos do bundle estático."
+            exit 1
+          fi
+
+      - name: Verify image contains no Supabase keys
+        run: |
+          if grep --recursive --extended-regexp \
+            'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}|sb_publishable_[A-Za-z0-9_-]+' \
+            bundle-slim; then
+            echo "::error::A imagem contém uma chave Supabase incorporada."
             exit 1
           fi
 
@@ -219,6 +203,9 @@ jobs:
     name: OWASP ZAP (DAST)
     needs: container_image
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v7
 
@@ -230,8 +217,26 @@ jobs:
       - name: Load verified image
         run: zstd --decompress --stdout maquinaroupa-slim.tar.zst | docker load
 
+      - name: Validate runtime configuration
+        run: |
+          if [[ ! "$SUPABASE_URL" =~ ^https://[a-z0-9-]+\.supabase\.co$ ]]; then
+            echo "::error::VITE_SUPABASE_URL não contém uma URL válida do Supabase."
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_ANON" ] || [[ "$SUPABASE_ANON" =~ ^https?:// ]]; then
+            echo "::error::VITE_SUPABASE_ANON_KEY está ausente ou contém uma URL."
+            exit 1
+          fi
+
       - name: Start optimized application
-        run: docker run --detach --name maquinaroupa-security --publish 8080:8080 maquinaroupa:slim
+        run: |
+          docker run --detach \
+            --name maquinaroupa-security \
+            --publish 8080:8080 \
+            --env VITE_SUPABASE_URL="$SUPABASE_URL" \
+            --env VITE_SUPABASE_ANON_KEY="$SUPABASE_ANON" \
+            maquinaroupa:slim
 
       - name: Wait for optimized application
         run: |

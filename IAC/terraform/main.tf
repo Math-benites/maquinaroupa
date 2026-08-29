@@ -31,6 +31,11 @@ resource "docker_container" "app" {
   name  = "${var.container_name}-${count.index + 1}"
   image = local.app_image_id
 
+  env = [
+    "VITE_SUPABASE_URL=${var.vite_supabase_url}",
+    "VITE_SUPABASE_ANON_KEY=${var.vite_supabase_anon_key}",
+  ]
+
   ports {
     internal = 8080
     external = var.app_port + count.index

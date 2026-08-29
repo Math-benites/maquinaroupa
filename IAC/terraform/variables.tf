@@ -24,17 +24,26 @@ variable "app_port" {
 
 
 variable "vite_supabase_url" {
-  description = "URL do projeto Supabase usada no build do Vite. Se null, le VITE_SUPABASE_URL do .env."
+  description = "URL pública do Supabase injetada quando o container inicia."
   type        = string
-  default     = null
   sensitive   = true
+
+  validation {
+    condition     = can(regex("^https://[a-z0-9-]+\\.supabase\\.co$", var.vite_supabase_url))
+    error_message = "vite_supabase_url deve ser uma URL válida do Supabase."
+  }
 }
 
 variable "vite_supabase_anon_key" {
-  description = "Anon key publica do Supabase usada no build do Vite. Se null, le VITE_SUPABASE_ANON_KEY do .env."
+  description = "Chave anon/publishable pública do Supabase injetada quando o container inicia. Nunca use service_role."
   type        = string
-  default     = null
   sensitive   = true
+
+
+  validation {
+    condition     = !startswith(var.vite_supabase_anon_key, "http") && length(var.vite_supabase_anon_key) > 20
+    error_message = "vite_supabase_anon_key deve conter uma chave anon/publishable, não uma URL."
+  }
 }
 
 variable "app_replicas" {
