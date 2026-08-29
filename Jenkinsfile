@@ -78,10 +78,11 @@ pipeline {
             steps {
                 sh '''
                     export DOCKER_API_VERSION=1.44
-                    slim build \
+                    slim --crt-api-version 1.44 build \
                         --target maquinaroupa:ci \
                         --tag maquinaroupa:slim \
                         --http-probe \
+                        --sensor-ipc-mode proxy \
                         --preserve-path /usr/share/nginx/html
                 '''
             }
