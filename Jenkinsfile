@@ -63,6 +63,7 @@ pipeline {
                 dir('docker-build') {
                     checkout scm
                     sh '''
+                        export DOCKER_BUILDKIT=1
                         docker build \
                             --file IAC/Dockerfile \
                             --tag maquinaroupa:ci \
