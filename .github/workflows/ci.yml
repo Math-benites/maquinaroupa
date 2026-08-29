@@ -121,9 +121,25 @@ jobs:
         uses: kitabisa/docker-slim-action@v1
         env:
           DSLIM_HTTP_PROBE: true
+          DSLIM_INCLUDE_PATH: /usr/share/nginx/html
         with:
           target: maquinaroupa:ci
           tag: slim
+
+      - name: Verify static bundle integrity
+        run: |
+          FAT_CONTAINER=$(docker create maquinaroupa:ci)
+          SLIM_CONTAINER=$(docker create maquinaroupa:slim)
+          trap 'docker rm -f "$FAT_CONTAINER" "$SLIM_CONTAINER" >/dev/null 2>&1 || true' EXIT
+
+          mkdir -p bundle-fat bundle-slim
+          docker cp "$FAT_CONTAINER:/usr/share/nginx/html/." bundle-fat/
+          docker cp "$SLIM_CONTAINER:/usr/share/nginx/html/." bundle-slim/
+
+          if ! diff --recursive --brief bundle-fat bundle-slim; then
+            echo "::error::SlimToolkit removeu ou alterou arquivos do bundle estático."
+            exit 1
+          fi
 
       - name: Publish image compression summary
         run: |
