@@ -48,7 +48,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trivy:
-    name: Trivy (dependency vulnerabilities)
+    name: Container Security (ZAP + Trivy)
+    needs: [build, gitleaks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -86,6 +87,77 @@ jobs:
             echo "| Depois - \`maquinaroupa:slim\` | $SLIM_SIZE |"
             echo ""
             echo "Redução: **$REDUCTION%**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start optimized application
+        run: docker run --detach --name maquinaroupa-security --publish 8080:8080 maquinaroupa:slim
+
+      - name: Wait for optimized application
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8080/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs maquinaroupa-security
+          echo "::error::A imagem otimizada não respondeu antes do timeout."
+          exit 1
+
+      - name: Run ZAP baseline scan
+        id: zap-scan
+        run: |
+          mkdir -p zap-report
+          chmod 777 zap-report
+          set +e
+          docker run --rm \
+            --network host \
+            --volume "$GITHUB_WORKSPACE/zap-report:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t http://127.0.0.1:8080 \
+              -J zap-report.json \
+              -r zap-report.html \
+              -I
+          ZAP_EXIT_CODE=$?
+          echo "exit_code=$ZAP_EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish ZAP summary
+        id: zap-summary
+        if: always()
+        env:
+          ZAP_EXIT_CODE: ${{ steps.zap-scan.outputs.exit_code }}
+        run: |
+          REPORT="zap-report/zap-report.json"
+          HIGH=0
+          MEDIUM=0
+          LOW=0
+          INFORMATIONAL=0
+
+          if [ -f "$REPORT" ]; then
+            HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode == "3")] | length' "$REPORT")
+            MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode == "2")] | length' "$REPORT")
+            LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode == "1")] | length' "$REPORT")
+            INFORMATIONAL=$(jq '[.site[]?.alerts[]? | select(.riskcode == "0")] | length' "$REPORT")
+          fi
+
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "scan_exit_code=${ZAP_EXIT_CODE:-missing}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## OWASP ZAP DAST Report"
+            echo ""
+            echo "Imagem testada: \`maquinaroupa:slim\`"
+            echo ""
+            echo "| Risco | Alertas |"
+            echo "|---|---:|"
+            echo "| Alto | $HIGH |"
+            echo "| Médio | $MEDIUM |"
+            echo "| Baixo | $LOW |"
+            echo "| Informativo | $INFORMATIONAL |"
+            echo ""
+            echo "O relatório HTML completo está no artefato \`zap-report\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Trivy filesystem scan
@@ -149,13 +221,46 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report/
+          if-no-files-found: warn
+
+      - name: Stop optimized application
+        if: always()
+        run: docker rm --force maquinaroupa-security 2>/dev/null || true
+
+      - name: Security gate
+        if: always()
+        env:
+          ZAP_EXIT_CODE: ${{ steps.zap-summary.outputs.scan_exit_code }}
+          ZAP_HIGH: ${{ steps.zap-summary.outputs.high }}
+          TRIVY_FS_OUTCOME: ${{ steps.trivy-fs-scan.outcome }}
+          TRIVY_IMAGE_OUTCOME: ${{ steps.trivy-image-scan.outcome }}
+        run: |
+          FAILED=0
+
+          if [ "$ZAP_EXIT_CODE" = "missing" ] || [ "$ZAP_EXIT_CODE" -gt 1 ]; then
+            echo "::error::O scan do ZAP não foi concluído corretamente."
+            FAILED=1
+          elif [ "$ZAP_HIGH" -gt 0 ]; then
+            echo "::error::OWASP ZAP encontrou $ZAP_HIGH alerta(s) de risco alto."
+            FAILED=1
+          fi
+
           if [ "$TRIVY_FS_OUTCOME" != "success" ] || [ "$TRIVY_IMAGE_OUTCOME" != "success" ]; then
             echo "::error::Trivy encontrou problemas de segurança. Consulte o Job Summary."
-            exit 1
+            FAILED=1
           fi
+
+          exit "$FAILED"
 
   sonarqube:
     name: SonarQube
+    needs: [build, gitleaks]
     runs-on: ubuntu-latest
     environment: sonarqubekey
     steps:
@@ -253,109 +358,9 @@ jobs:
             exit 1
           fi
 
-  zap:
-    name: OWASP ZAP (DAST)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build application image
-        run: |
-          docker build \
-            --file IAC/Dockerfile \
-            --tag maquinaroupa:zap \
-            --build-arg SUPABASE_URL=https://placeholder.supabase.co \
-            --build-arg SUPABASE_ANON=placeholder \
-            .
-
-      - name: Start application
-        run: docker run --detach --name maquinaroupa-zap --publish 8080:8080 maquinaroupa:zap
-
-      - name: Wait for application
-        run: |
-          for attempt in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8080/ > /dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs maquinaroupa-zap
-          echo "::error::A aplicação não respondeu antes do timeout."
-          exit 1
-
-      - name: Run ZAP baseline scan
-        id: zap-scan
-        run: |
-          mkdir -p zap-report
-          chmod 777 zap-report
-          set +e
-          docker run --rm \
-            --network host \
-            --volume "$GITHUB_WORKSPACE/zap-report:/zap/wrk/:rw" \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
-              -t http://127.0.0.1:8080 \
-              -J zap-report.json \
-              -r zap-report.html \
-              -I
-          ZAP_EXIT_CODE=$?
-          echo "exit_code=$ZAP_EXIT_CODE" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Publish ZAP summary
-        if: always()
-        env:
-          ZAP_EXIT_CODE: ${{ steps.zap-scan.outputs.exit_code }}
-        run: |
-          REPORT="zap-report/zap-report.json"
-          HIGH=0
-          MEDIUM=0
-          LOW=0
-          INFORMATIONAL=0
-
-          if [ -f "$REPORT" ]; then
-            HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode == "3")] | length' "$REPORT")
-            MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode == "2")] | length' "$REPORT")
-            LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode == "1")] | length' "$REPORT")
-            INFORMATIONAL=$(jq '[.site[]?.alerts[]? | select(.riskcode == "0")] | length' "$REPORT")
-          fi
-
-          {
-            echo "## OWASP ZAP DAST Report"
-            echo ""
-            echo "| Risco | Alertas |"
-            echo "|---|---:|"
-            echo "| Alto | $HIGH |"
-            echo "| Médio | $MEDIUM |"
-            echo "| Baixo | $LOW |"
-            echo "| Informativo | $INFORMATIONAL |"
-            echo ""
-            echo "O relatório HTML completo está no artefato \`zap-report\`."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ -z "$ZAP_EXIT_CODE" ] || [ "$ZAP_EXIT_CODE" -gt 1 ]; then
-            echo "::error::O scan do ZAP não foi concluído corretamente."
-            exit 1
-          fi
-          if [ "$HIGH" -gt 0 ]; then
-            echo "::error::OWASP ZAP encontrou $HIGH alerta(s) de risco alto."
-            exit 1
-          fi
-
-      - name: Upload ZAP report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report
-          path: zap-report/
-          if-no-files-found: warn
-
-      - name: Stop application
-        if: always()
-        run: docker rm --force maquinaroupa-zap 2>/dev/null || true
-
   checkov:
     name: Checkov (IaC security scan)
+    needs: [trivy, sonarqube]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
