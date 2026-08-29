@@ -5,6 +5,7 @@ export interface Reservation {
   inicio: string
   fim: string
   created_at: string
+  cancelado_em: string | null
 }
 
 export type PublicReservation = Omit<Reservation, 'nome'>

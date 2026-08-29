@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import type { NewReservationInput, PublicReservation } from '../types/reservation'
 
-const PUBLIC_COLUMNS = 'id, apartamento, inicio, fim, created_at'
+const PUBLIC_COLUMNS = 'id, apartamento, inicio, fim, created_at, cancelado_em'
 
 export class ReservationConflictError extends Error {}
 
@@ -11,6 +11,7 @@ export async function fetchReservationsForDay(dayStart: Date, dayEnd: Date): Pro
     .select(PUBLIC_COLUMNS)
     .gte('inicio', dayStart.toISOString())
     .lt('inicio', dayEnd.toISOString())
+    .is('cancelado_em', null)
     .order('inicio', { ascending: true })
 
   if (error) throw error

@@ -7,7 +7,7 @@ import { Toast } from './components/Toast'
 import { AgendarScreen } from './screens/AgendarScreen'
 import { MinhasReservasScreen } from './screens/MinhasReservasScreen'
 import { AjudaScreen } from './screens/AjudaScreen'
-import { getOwnToken, removeOwnReservation } from './lib/ownReservations'
+import { getOwnToken } from './lib/ownReservations'
 import { cancelReservation } from './services/reservations'
 import type { PublicReservation } from './types/reservation'
 
@@ -40,7 +40,6 @@ function App() {
 
     try {
       await cancelReservation(cancelTarget.id, token)
-      removeOwnReservation(cancelTarget.id)
       setCancelTarget(null)
       setRefreshKey((k) => k + 1)
       setToast('Reserva cancelada com sucesso!')
