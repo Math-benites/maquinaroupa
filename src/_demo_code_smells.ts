@@ -30,12 +30,11 @@ export function loadUserPrefs(raw: string) {
   let parsed;
   try {
     parsed = JSON.parse(raw);
-  } catch (e) {
+  } catch {
   }
   return parsed;
 }
 
 export function unusedHelper() {
-  const notUsedAnywhere = 42;
   return "Sem cupom";
 }
