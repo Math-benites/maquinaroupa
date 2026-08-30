@@ -251,19 +251,22 @@ HTMLEOF
             }
         }
 
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                dir('docker-build') {
-                    checkout scm
-                    sh '''
-                        export DOCKER_BUILDKIT=1
-                        docker build \
-                            --file IAC/Dockerfile \
-                            --tag maquinaroupa:ci \
-                            --label org.opencontainers.image.revision="${GIT_COMMIT}" \
-                            .
-                    '''
-                }
+                sh '''
+                    export DOCKER_BUILDKIT=1
+                    docker build \
+                        --file IAC/Dockerfile \
+                        --tag maquinaroupa:ci \
+                        --label org.opencontainers.image.revision="${GIT_COMMIT}" \
+                        .
+                '''
             }
             post {
                 success {
@@ -427,10 +430,8 @@ HTMLEOF
 
         stage('SonarQube') {
             steps {
-                dir('sonarqube') {
-                    checkout scm
-                    sh '''
-                        (
+                sh '''
+                    (
                             sonar-scanner \
                                 -Dsonar.host.url="${SONAR_HOST_URL}" \
                                 -Dsonar.token="${SONAR_TOKEN}"
@@ -469,17 +470,16 @@ HTMLEOF
                                 echo "SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes."
                                 exit 1
                             fi
-                        ) > sonar-output.txt 2>&1
-                        RC=$?
-                        cat sonar-output.txt
-                        exit $RC
-                    '''
-                }
+                    ) > sonar-output.txt 2>&1
+                    RC=$?
+                    cat sonar-output.txt
+                    exit $RC
+                '''
             }
             post {
                 success {
                     sh '''
-                        . sonarqube/sonar-result.env 2>/dev/null || true
+                        . ./sonar-result.env 2>/dev/null || true
                         {
                             echo "<div class=\\"card ok\\">"
                             echo "<h2>&#9989; SonarQube</h2>"
@@ -504,7 +504,7 @@ HTMLEOF
                             echo "<h2>&#10060; SonarQube</h2>"
                             echo "<p>Status: <span class=\\"badge fail\\">issues MAJOR+ ou hotspots pendentes encontrados</span></p>"
                             echo "<pre>"
-                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' sonarqube/sonar-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' sonar-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
                             echo "</pre>"
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
@@ -516,19 +516,16 @@ HTMLEOF
 
         stage('Checkov (IaC security scan)') {
             steps {
-                dir('checkov') {
-                    checkout scm
-                    sh '''
-                        checkov \
-                            --directory . \
-                            --compact \
-                            --skip-framework terraform_plan \
-                            > checkov-output.txt 2>&1
-                        RC=$?
-                        cat checkov-output.txt
-                        exit $RC
-                    '''
-                }
+                sh '''
+                    checkov \
+                        --directory . \
+                        --compact \
+                        --skip-framework terraform_plan \
+                        > checkov-output.txt 2>&1
+                    RC=$?
+                    cat checkov-output.txt
+                    exit $RC
+                '''
             }
             post {
                 success {
@@ -549,7 +546,7 @@ HTMLEOF
                             echo "<h2>&#10060; Checkov (IaC security scan)</h2>"
                             echo "<p>Status: <span class=\\"badge fail\\">violacoes ou erros de analise encontrados</span></p>"
                             echo "<pre>"
-                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' checkov/checkov-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' checkov-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
                             echo "</pre>"
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/09-checkov.html"
