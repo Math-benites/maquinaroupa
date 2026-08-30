@@ -567,8 +567,12 @@ HTMLEOF
                 sh '''
                     (
                         set -e
-                        if [ -z "${VITE_SUPABASE_URL}" ] || [ -z "${VITE_SUPABASE_ANON_KEY}" ]; then
-                            echo "ERRO: VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY nao configurados."
+                        if [ -z "${VITE_SUPABASE_URL}" ]; then
+                            echo "ERRO: VITE_SUPABASE_URL nao configurado."
+                            exit 1
+                        fi
+                        if [ -z "${VITE_SUPABASE_ANON_KEY}" ]; then
+                            echo "ERRO: VITE_SUPABASE_ANON_KEY nao configurado."
                             exit 1
                         fi
 
