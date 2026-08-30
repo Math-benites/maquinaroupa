@@ -599,7 +599,8 @@ HTMLEOF
 
                         docker rm -f zap-scan 2>/dev/null || true
                         set +e
-                        docker run --name zap-scan --network "${DOCKER_NET}" ghcr.io/zaproxy/zaproxy:stable \
+                        docker volume rm -f zap-wrk 2>/dev/null || true
+                        docker run --name zap-scan --network "${DOCKER_NET}" --volume zap-wrk:/zap/wrk ghcr.io/zaproxy/zaproxy:stable \
                             zap-baseline.py -t "http://maquinaroupa-security:8080" -J zap-report.json -r zap-report.html -I
                         ZAP_EXIT_CODE=$?
                         set -e
