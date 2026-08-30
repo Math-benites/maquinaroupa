@@ -675,6 +675,75 @@ HTMLEOF
                 }
             }
         }
+
+        stage('Publish Verified Image') {
+            steps {
+                sh '''
+                    (
+                        set -e
+                        if [ -z "${GHCR_TOKEN}" ]; then
+                            echo "ERRO: GHCR_TOKEN nao configurado."
+                            exit 1
+                        fi
+                        if [ -z "${GHCR_USERNAME}" ]; then
+                            echo "ERRO: GHCR_USERNAME nao configurado."
+                            exit 1
+                        fi
+
+                        IMAGE="ghcr.io/math-benites/maquinaroupa"
+                        SHA_TAG="${IMAGE}:${GIT_COMMIT}"
+                        LATEST_TAG="${IMAGE}:latest"
+
+                        docker tag maquinaroupa:slim "${SHA_TAG}"
+                        docker tag maquinaroupa:slim "${LATEST_TAG}"
+
+                        echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+
+                        docker push "${SHA_TAG}"
+                        docker push "${LATEST_TAG}"
+
+                        echo "SHA_TAG=${SHA_TAG}" > publish-result.env
+                        echo "LATEST_TAG=${LATEST_TAG}" >> publish-result.env
+                    ) > publish-output.txt 2>&1
+                    RC=$?
+                    cat publish-output.txt
+                    exit $RC
+                '''
+            }
+            post {
+                success {
+                    sh '''
+                        . ./publish-result.env 2>/dev/null || true
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; Publish Verified Image</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">imagem publicada no GHCR</span></p>"
+                            echo "<table>"
+                            echo "<tr><th>Tag</th><th>Uso</th></tr>"
+                            echo "<tr><td><code>${SHA_TAG}</code></td><td>Deploy imutavel recomendado</td></tr>"
+                            echo "<tr><td><code>${LATEST_TAG}</code></td><td>Referencia conveniente para testes</td></tr>"
+                            echo "</table>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/11-publish.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; Publish Verified Image</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">falha ao publicar imagem</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' publish-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/11-publish.html"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
     }
 
     post {
