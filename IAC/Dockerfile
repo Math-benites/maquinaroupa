@@ -20,6 +20,7 @@ COPY --chmod=755 IAC/docker/40-runtime-config.sh /docker-entrypoint.d/40-runtime
 # (e root:root). Precisa de USER root temporario pra isso.
 USER root
 RUN chown nginx:nginx /usr/share/nginx/html
+USER nginx
 
 EXPOSE 8080
 
