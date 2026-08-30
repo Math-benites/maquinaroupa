@@ -642,7 +642,7 @@ HTMLEOF
                 }
                 success {
                     sh '''
-                        . zap-result.env 2>/dev/null || true
+                        . ./zap-result.env 2>/dev/null || true
                         {
                             echo "<div class=\\"card ok\\">"
                             echo "<h2>&#9989; OWASP ZAP (DAST)</h2>"
