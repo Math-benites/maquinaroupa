@@ -1,29 +1,14 @@
 // DEMO INTENCIONAL para print do SonarQube summary. Remover depois de capturar o print.
 
 export function checkDiscount(user: any, order: any) {
-  let msg = "";
-  if (user.vip == true) {
-    if (order.total > 100) {
-      if (order.items.length > 0) {
-        if (order.coupon != null) {
-          if (order.coupon.active == true) {
-            msg = "Cupom VIP aplicado";
-          } else {
-            msg = "Cupom expirado";
-          }
-        } else {
-          msg = "Sem cupom";
-        }
-      } else {
-        msg = "Sem cupom";
-      }
-    } else {
-      msg = "Sem cupom";
-    }
-  } else {
-    msg = "Sem cupom";
+  const isEligible = user.vip === true && order.total > 100 && order.items.length > 0;
+  if (!isEligible) {
+    return "Sem cupom";
   }
-  return msg;
+  if (order.coupon == null) {
+    return "Sem cupom";
+  }
+  return order.coupon.active === true ? "Cupom VIP aplicado" : "Cupom expirado";
 }
 
 export function loadUserPrefs(raw: string) {
