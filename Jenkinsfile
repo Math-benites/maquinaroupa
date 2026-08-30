@@ -1,3 +1,4 @@
+// summary builder + publisher for the CI Summary tab
 def writeSummary() {
     env.BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
     sh '''
