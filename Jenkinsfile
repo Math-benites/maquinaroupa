@@ -1,3 +1,4 @@
+// summary builder + publisher for the CI Summary tab
 def writeSummary() {
     env.BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
     sh '''
@@ -98,16 +99,12 @@ def publishSummary() {
     ]
 }
 
-def tryUnstash(name) {
-    try {
-        unstash name
-    } catch (e) {
-        echo "Aviso: stash '${name}' nao encontrado (stage correspondente pode nao ter rodado)."
-    }
-}
-
 pipeline {
-    agent none
+    agent { label 'docker' }
+
+    tools {
+        nodejs 'node-22'
+    }
 
     options {
         ansiColor('xterm')
@@ -115,15 +112,16 @@ pipeline {
     }
 
     stages {
+        stage('Prepare Summary') {
+            steps {
+                sh 'rm -rf ci-summary && mkdir -p ci-summary'
+            }
+        }
+
         stage('Verify') {
             parallel {
                 stage('Build & Lint & Test') {
-                    agent { label 'docker' }
-                    tools {
-                        nodejs 'node-22'
-                    }
                     steps {
-                        sh 'mkdir -p ci-summary'
                         dir('verify-build') {
                             checkout scm
                             sh 'npm ci'
@@ -143,7 +141,7 @@ pipeline {
 </div>
 HTMLEOF
                             '''
-                            stash name: 'summary-01', includes: 'ci-summary/01-build.html'
+                            script { writeSummary() }
                         }
                         failure {
                             sh '''
@@ -155,15 +153,13 @@ HTMLEOF
 </div>
 HTMLEOF
                             '''
-                            stash name: 'summary-01', includes: 'ci-summary/01-build.html'
+                            script { writeSummary() }
                         }
                     }
                 }
 
                 stage('Gitleaks (secret scan)') {
-                    agent { label 'docker' }
                     steps {
-                        sh 'mkdir -p ci-summary'
                         dir('verify-gitleaks') {
                             checkout scm
                             sh '''
@@ -184,7 +180,7 @@ HTMLEOF
 </div>
 HTMLEOF
                             '''
-                            stash name: 'summary-02', includes: 'ci-summary/02-gitleaks.html'
+                            script { writeSummary() }
                         }
                         failure {
                             sh '''
@@ -198,15 +194,13 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/02-gitleaks.html"
                             '''
-                            stash name: 'summary-02', includes: 'ci-summary/02-gitleaks.html'
+                            script { writeSummary() }
                         }
                     }
                 }
 
                 stage('Trivy (repository scan)') {
-                    agent { label 'docker' }
                     steps {
-                        sh 'mkdir -p ci-summary'
                         dir('verify-trivy') {
                             checkout scm
                             sh '''
@@ -236,7 +230,7 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/03-trivy-repo.html"
                             '''
-                            stash name: 'summary-03', includes: 'ci-summary/03-trivy-repo.html'
+                            script { writeSummary() }
                         }
                         failure {
                             sh '''
@@ -250,450 +244,440 @@ HTMLEOF
                                     echo "</div>"
                                 } > "${WORKSPACE}/ci-summary/03-trivy-repo.html"
                             '''
-                            stash name: 'summary-03', includes: 'ci-summary/03-trivy-repo.html'
-                        }
-                    }
-                }
-
-                stage('Checkov (IaC security scan)') {
-                    agent { label 'docker' }
-                    steps {
-                        sh 'mkdir -p ci-summary'
-                        dir('checkov') {
-                            checkout scm
-                            sh '''
-                                checkov \
-                                    --directory . \
-                                    --compact \
-                                    --skip-framework terraform_plan \
-                                    > checkov-output.txt 2>&1
-                                RC=$?
-                                cat checkov-output.txt
-                                exit $RC
-                            '''
-                        }
-                    }
-                    post {
-                        success {
-                            sh '''
-                                {
-                                    echo "<div class=\\"card ok\\">"
-                                    echo "<h2>&#9989; Checkov (IaC security scan)</h2>"
-                                    echo "<p>Status: <span class=\\"badge ok\\">nenhuma politica de seguranca violada</span></p>"
-                                    echo "</div>"
-                                } > "${WORKSPACE}/ci-summary/09-checkov.html"
-                            '''
-                            stash name: 'summary-09', includes: 'ci-summary/09-checkov.html'
-                        }
-                        failure {
-                            sh '''
-                                {
-                                    echo "<div class=\\"card fail\\">"
-                                    echo "<h2>&#10060; Checkov (IaC security scan)</h2>"
-                                    echo "<p>Status: <span class=\\"badge fail\\">violacoes ou erros de analise encontrados</span></p>"
-                                    echo "<pre>"
-                                    sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' checkov/checkov-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                                    echo "</pre>"
-                                    echo "</div>"
-                                } > "${WORKSPACE}/ci-summary/09-checkov.html"
-                            '''
-                            stash name: 'summary-09', includes: 'ci-summary/09-checkov.html'
+                            script { writeSummary() }
                         }
                     }
                 }
             }
         }
 
-        stage('Build & Optimize') {
-            parallel {
-                stage('Docker Image Pipeline') {
-                    agent { label 'docker' }
-                    stages {
-                        stage('Build Docker Image') {
-                            steps {
-                                sh 'mkdir -p ci-summary'
-                                dir('docker-build') {
-                                    checkout scm
-                                    sh '''
-                                        export DOCKER_BUILDKIT=1
-                                        docker build \
-                                            --file IAC/Dockerfile \
-                                            --tag maquinaroupa:ci \
-                                            --label org.opencontainers.image.revision="${GIT_COMMIT}" \
-                                            .
-                                    '''
-                                }
-                            }
-                            post {
-                                success {
-                                    sh '''
-                                        cat <<'HTMLEOF' > "${WORKSPACE}/ci-summary/04-docker-build.html"
+        stage('Build Docker Image') {
+            steps {
+                dir('docker-build') {
+                    checkout scm
+                    sh '''
+                        export DOCKER_BUILDKIT=1
+                        docker build \
+                            --file IAC/Dockerfile \
+                            --tag maquinaroupa:ci \
+                            --label org.opencontainers.image.revision="${GIT_COMMIT}" \
+                            .
+                    '''
+                }
+            }
+            post {
+                success {
+                    sh '''
+                        cat <<'HTMLEOF' > "${WORKSPACE}/ci-summary/04-docker-build.html"
 <div class="card ok">
 <h2>&#9989; Build Docker Image</h2>
 <p>Status: <span class="badge ok">SUCESSO</span></p>
 <p>Imagem <code>maquinaroupa:ci</code> construida com sucesso.</p>
 </div>
 HTMLEOF
-                                    '''
-                                }
-                                failure {
-                                    sh '''
-                                        cat <<'HTMLEOF' > "${WORKSPACE}/ci-summary/04-docker-build.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        cat <<'HTMLEOF' > "${WORKSPACE}/ci-summary/04-docker-build.html"
 <div class="card fail">
 <h2>&#10060; Build Docker Image</h2>
 <p>Status: <span class="badge fail">FALHOU</span></p>
 <p>A construcao da imagem <code>maquinaroupa:ci</code> falhou. Consulte o log do stage para detalhes.</p>
 </div>
 HTMLEOF
-                                    '''
-                                }
-                            }
-                        }
-
-                        stage('Optimize Image (SlimToolkit)') {
-                            steps {
-                                sh '''
-                                    export DOCKER_API_VERSION=1.44
-                                    slim --crt-api-version 1.44 build \
-                                        --target maquinaroupa:ci \
-                                        --tag maquinaroupa:slim \
-                                        --http-probe \
-                                        --sensor-ipc-mode proxy \
-                                        --preserve-path /usr/share/nginx/html > slim-output.txt 2>&1
-                                    RC=$?
-                                    cat slim-output.txt
-                                    exit $RC
-                                '''
-                            }
-                            post {
-                                success {
-                                    sh '''
-                                        ORIGINAL_BYTES=$(docker image inspect maquinaroupa:ci --format '{{.Size}}' 2>/dev/null || echo 0)
-                                        SLIM_BYTES=$(docker image inspect maquinaroupa:slim --format '{{.Size}}' 2>/dev/null || echo 0)
-                                        ORIGINAL_SIZE=$(numfmt --to=iec-i --suffix=B "$ORIGINAL_BYTES" 2>/dev/null || echo "${ORIGINAL_BYTES} B")
-                                        SLIM_SIZE=$(numfmt --to=iec-i --suffix=B "$SLIM_BYTES" 2>/dev/null || echo "${SLIM_BYTES} B")
-                                        REDUCTION=$(awk -v original="$ORIGINAL_BYTES" -v slim="$SLIM_BYTES" 'BEGIN { if (original > 0) { printf "%.1f", (1 - slim / original) * 100 } else { print "0.0" } }')
-                                        FACTOR=$(grep -o "by='[0-9.]*X'" slim-output.txt 2>/dev/null | tail -1 | grep -o "[0-9.]*X" || echo "n/d")
-
-                                        {
-                                            echo "<h3>SlimToolkit</h3>"
-                                            echo "<p>Status: <span class=\\"badge ok\\">SUCESSO</span></p>"
-                                            echo "<table>"
-                                            echo "<tr><th>Imagem</th><th>Tamanho</th></tr>"
-                                            echo "<tr><td>Antes - <code>maquinaroupa:ci</code></td><td>${ORIGINAL_SIZE}</td></tr>"
-                                            echo "<tr><td>Depois - <code>maquinaroupa:slim</code></td><td>${SLIM_SIZE}</td></tr>"
-                                            echo "</table>"
-                                            echo "<p>Reducao estimada: <strong>${REDUCTION}%</strong> &mdash; fator relatado pelo SlimToolkit: <strong>${FACTOR}</strong></p>"
-                                        } > "${WORKSPACE}/ci-summary/05a-body.html"
-                                        echo "ok" > "${WORKSPACE}/ci-summary/05a-status.txt"
-                                    '''
-                                }
-                                failure {
-                                    sh '''
-                                        {
-                                            echo "<h3>SlimToolkit</h3>"
-                                            echo "<p>Status: <span class=\\"badge fail\\">FALHOU</span></p>"
-                                            echo "<pre>"
-                                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' slim-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                                            echo "</pre>"
-                                        } > "${WORKSPACE}/ci-summary/05a-body.html"
-                                        echo "fail" > "${WORKSPACE}/ci-summary/05a-status.txt"
-                                    '''
-                                }
-                            }
-                        }
-
-                        stage('Verify Optimized Image') {
-                            steps {
-                                sh '''
-                                    (
-                                        FAT_CONTAINER=$(docker create maquinaroupa:ci)
-                                        SLIM_CONTAINER=$(docker create maquinaroupa:slim)
-                                        mkdir -p bundle-fat bundle-slim
-                                        docker cp "$FAT_CONTAINER:/usr/share/nginx/html/." bundle-fat/
-                                        docker cp "$SLIM_CONTAINER:/usr/share/nginx/html/." bundle-slim/
-                                        docker rm -f "$FAT_CONTAINER" "$SLIM_CONTAINER"
-
-                                        if ! diff --recursive --brief bundle-fat bundle-slim; then
-                                            echo "ERRO: SlimToolkit removeu ou alterou arquivos do bundle estatico."
-                                            exit 1
-                                        fi
-
-                                        if grep --recursive --extended-regexp \
-                                            'eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}|sb_publishable_[A-Za-z0-9_-]+' \
-                                            bundle-slim; then
-                                            echo "ERRO: imagem contem uma chave Supabase incorporada."
-                                            exit 1
-                                        fi
-
-                                        rm -rf bundle-fat bundle-slim
-                                    ) > verify-image-output.txt 2>&1
-                                    RC=$?
-                                    cat verify-image-output.txt
-                                    exit $RC
-                                '''
-                            }
-                        }
-
-                        stage('Trivy (optimized image scan)') {
-                            steps {
-                                sh '''
-                                    trivy image \
-                                        --severity CRITICAL,HIGH \
-                                        --exit-code 1 \
-                                        --ignore-unfixed \
-                                        --format table \
-                                        -o trivy-image-report.txt \
-                                        maquinaroupa:slim
-                                '''
-                            }
-                            post {
-                                always {
-                                    archiveArtifacts artifacts: 'trivy-image-report.txt', allowEmptyArchive: true
-                                }
-                                success {
-                                    sh '''
-                                        {
-                                            echo "<h3>Trivy Scan (imagem otimizada)</h3>"
-                                            echo "<p>Status: <span class=\\"badge ok\\">sem vulnerabilidades HIGH/CRITICAL</span></p>"
-                                            echo "<pre>"
-                                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' trivy-image-report.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                                            echo "</pre>"
-                                        } > "${WORKSPACE}/ci-summary/05b-body.html"
-                                        echo "ok" > "${WORKSPACE}/ci-summary/05b-status.txt"
-                                    '''
-                                }
-                                failure {
-                                    sh '''
-                                        {
-                                            echo "<h3>Trivy Scan (imagem otimizada)</h3>"
-                                            echo "<p>Status: <span class=\\"badge fail\\">vulnerabilidade(s) HIGH/CRITICAL detectada(s)</span></p>"
-                                            echo "<pre>"
-                                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' trivy-image-report.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                                            echo "</pre>"
-                                        } > "${WORKSPACE}/ci-summary/05b-body.html"
-                                        echo "fail" > "${WORKSPACE}/ci-summary/05b-status.txt"
-                                    '''
-                                }
-                            }
-                        }
-
-                        stage('OWASP ZAP (DAST)') {
-                            environment {
-                                DOCKER_NET = 'lab-jenkins_default'
-                            }
-                            steps {
-                                sh '''
-                                    (
-                                        set -e
-                                        if [ -z "${VITE_SUPABASE_URL}" ]; then
-                                            echo "ERRO: VITE_SUPABASE_URL nao configurado."
-                                            exit 1
-                                        fi
-                                        if [ -z "${VITE_SUPABASE_ANON_KEY}" ]; then
-                                            echo "ERRO: VITE_SUPABASE_ANON_KEY nao configurado."
-                                            exit 1
-                                        fi
-
-                                        docker rm -f maquinaroupa-security 2>/dev/null || true
-                                        docker run -d --name maquinaroupa-security \
-                                            --network "${DOCKER_NET}" \
-                                            --env VITE_SUPABASE_URL="${VITE_SUPABASE_URL}" \
-                                            --env VITE_SUPABASE_ANON_KEY="${VITE_SUPABASE_ANON_KEY}" \
-                                            maquinaroupa:slim
-
-                                        READY=0
-                                        for _ in $(seq 1 30); do
-                                            if curl --silent --fail "http://maquinaroupa-security:8080/" > /dev/null; then
-                                                READY=1
-                                                break
-                                            fi
-                                            sleep 2
-                                        done
-                                        if [ "$READY" != "1" ]; then
-                                            echo "ERRO: aplicacao nao respondeu antes do timeout."
-                                            docker logs maquinaroupa-security || true
-                                            exit 1
-                                        fi
-
-                                        docker rm -f zap-scan 2>/dev/null || true
-                                        set +e
-                                        docker volume rm -f zap-wrk 2>/dev/null || true
-                                        docker run --name zap-scan --network "${DOCKER_NET}" --user root --volume zap-wrk:/zap/wrk ghcr.io/zaproxy/zaproxy:stable \
-                                            zap-baseline.py -t "http://maquinaroupa-security:8080" -J zap-report.json -r zap-report.html -I
-                                        ZAP_EXIT_CODE=$?
-                                        set -e
-
-                                        mkdir -p zap-report
-                                        docker cp zap-scan:/zap/wrk/zap-report.json zap-report/zap-report.json 2>/dev/null || echo "{}" > zap-report/zap-report.json
-                                        docker cp zap-scan:/zap/wrk/zap-report.html zap-report/zap-report.html 2>/dev/null || true
-                                        docker rm -f zap-scan maquinaroupa-security 2>/dev/null || true
-
-                                        HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode == "3")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
-                                        MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode == "2")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
-                                        LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode == "1")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
-
-                                        echo "HIGH=$HIGH" > zap-result.env
-                                        echo "MEDIUM=$MEDIUM" >> zap-result.env
-                                        echo "LOW=$LOW" >> zap-result.env
-
-                                        echo "ZAP exit code: $ZAP_EXIT_CODE"
-                                        echo "Alertas HIGH: $HIGH  MEDIUM: $MEDIUM  LOW: $LOW"
-
-                                        if [ "$ZAP_EXIT_CODE" -gt 1 ]; then
-                                            echo "ERRO: scan do ZAP nao foi concluido corretamente."
-                                            exit 1
-                                        fi
-                                        if [ "$HIGH" -gt 0 ]; then
-                                            echo "ERRO: OWASP ZAP encontrou $HIGH alerta(s) de risco alto."
-                                            exit 1
-                                        fi
-                                        exit 0
-                                    ) > zap-output.txt 2>&1
-                                    RC=$?
-                                    cat zap-output.txt
-                                    exit $RC
-                                '''
-                            }
-                            post {
-                                always {
-                                    archiveArtifacts artifacts: 'zap-report/zap-report.html,zap-report/zap-report.json', allowEmptyArchive: true
-                                }
-                                success {
-                                    sh '''
-                                        . ./zap-result.env 2>/dev/null || true
-                                        {
-                                            echo "<div class=\\"card ok\\">"
-                                            echo "<h2>&#9989; OWASP ZAP (DAST)</h2>"
-                                            echo "<p>Status: <span class=\\"badge ok\\">sem alertas de risco alto</span></p>"
-                                            echo "<table>"
-                                            echo "<tr><th>Risco</th><th>Alertas</th></tr>"
-                                            echo "<tr><td>Alto</td><td>${HIGH:-0}</td></tr>"
-                                            echo "<tr><td>Medio</td><td>${MEDIUM:-0}</td></tr>"
-                                            echo "<tr><td>Baixo</td><td>${LOW:-0}</td></tr>"
-                                            echo "</table>"
-                                            echo "<p>Relatorio completo em anexo nos artefatos do build (<code>zap-report.html</code>).</p>"
-                                            echo "</div>"
-                                        } > "${WORKSPACE}/ci-summary/10-zap.html"
-                                    '''
-                                    stash name: 'summary-docker-chain', includes: 'ci-summary/04-docker-build.html,ci-summary/05a-status.txt,ci-summary/05a-body.html,ci-summary/05b-status.txt,ci-summary/05b-body.html,ci-summary/10-zap.html'
-                                }
-                                failure {
-                                    sh '''
-                                        {
-                                            echo "<div class=\\"card fail\\">"
-                                            echo "<h2>&#10060; OWASP ZAP (DAST)</h2>"
-                                            echo "<p>Status: <span class=\\"badge fail\\">alerta(s) de risco alto ou scan incompleto</span></p>"
-                                            echo "<pre>"
-                                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' zap-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                                            echo "</pre>"
-                                            echo "</div>"
-                                        } > "${WORKSPACE}/ci-summary/10-zap.html"
-                                    '''
-                                    stash name: 'summary-docker-chain', includes: 'ci-summary/04-docker-build.html,ci-summary/05a-status.txt,ci-summary/05a-body.html,ci-summary/05b-status.txt,ci-summary/05b-body.html,ci-summary/10-zap.html', allowEmpty: true
-                                }
-                            }
-                        }
-                    }
+                    '''
+                    script { writeSummary() }
                 }
+            }
+        }
 
-                stage('SonarQube') {
-                    agent { label 'docker' }
-                    steps {
-                        sh 'mkdir -p ci-summary'
-                        dir('sonarqube') {
-                            checkout scm
-                            sh '''
-                                (
-                                    sonar-scanner \
-                                        -Dsonar.host.url="${SONAR_HOST_URL}" \
-                                        -Dsonar.token="${SONAR_TOKEN}"
+        stage('Optimize Image (SlimToolkit)') {
+            steps {
+                sh '''
+                    export DOCKER_API_VERSION=1.44
+                    slim --crt-api-version 1.44 build \
+                        --target maquinaroupa:ci \
+                        --tag maquinaroupa:slim \
+                        --http-probe \
+                        --sensor-ipc-mode proxy \
+                        --preserve-path /usr/share/nginx/html > slim-output.txt 2>&1
+                    RC=$?
+                    cat slim-output.txt
+                    exit $RC
+                '''
+            }
+            post {
+                success {
+                    sh '''
+                        ORIGINAL_BYTES=$(docker image inspect maquinaroupa:ci --format '{{.Size}}' 2>/dev/null || echo 0)
+                        SLIM_BYTES=$(docker image inspect maquinaroupa:slim --format '{{.Size}}' 2>/dev/null || echo 0)
+                        ORIGINAL_SIZE=$(numfmt --to=iec-i --suffix=B "$ORIGINAL_BYTES" 2>/dev/null || echo "${ORIGINAL_BYTES} B")
+                        SLIM_SIZE=$(numfmt --to=iec-i --suffix=B "$SLIM_BYTES" 2>/dev/null || echo "${SLIM_BYTES} B")
+                        REDUCTION=$(awk -v original="$ORIGINAL_BYTES" -v slim="$SLIM_BYTES" 'BEGIN { if (original > 0) { printf "%.1f", (1 - slim / original) * 100 } else { print "0.0" } }')
+                        FACTOR=$(grep -o "by='[0-9.]*X'" slim-output.txt 2>/dev/null | tail -1 | grep -o "[0-9.]*X" || echo "n/d")
 
-                                    TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
-                                    STATUS="PENDING"
-                                    for _ in $(seq 1 30); do
-                                        STATUS=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/ce/task?id=${TASK_ID}" | jq -r '.task.status')
-                                        echo "status=$STATUS"
-                                        if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
-                                            break
-                                        fi
-                                        sleep 5
-                                    done
-                                    if [ "$STATUS" != "SUCCESS" ]; then
-                                        echo "Processamento da analise terminou com status $STATUS"
-                                        exit 1
-                                    fi
+                        {
+                            echo "<h3>SlimToolkit</h3>"
+                            echo "<p>Status: <span class=\\"badge ok\\">SUCESSO</span></p>"
+                            echo "<table>"
+                            echo "<tr><th>Imagem</th><th>Tamanho</th></tr>"
+                            echo "<tr><td>Antes - <code>maquinaroupa:ci</code></td><td>${ORIGINAL_SIZE}</td></tr>"
+                            echo "<tr><td>Depois - <code>maquinaroupa:slim</code></td><td>${SLIM_SIZE}</td></tr>"
+                            echo "</table>"
+                            echo "<p>Reducao estimada: <strong>${REDUCTION}%</strong> &mdash; fator relatado pelo SlimToolkit: <strong>${FACTOR}</strong></p>"
+                        } > "${WORKSPACE}/ci-summary/05a-body.html"
+                        echo "ok" > "${WORKSPACE}/ci-summary/05a-status.txt"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<h3>SlimToolkit</h3>"
+                            echo "<p>Status: <span class=\\"badge fail\\">FALHOU</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' slim-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                        } > "${WORKSPACE}/ci-summary/05a-body.html"
+                        echo "fail" > "${WORKSPACE}/ci-summary/05a-status.txt"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
 
-                                    ISSUES_JSON=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities")
-                                    ISSUES=$(echo "$ISSUES_JSON" | jq -r '.total')
-                                    BLOCKER=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="BLOCKER").count] | first) // 0')
-                                    CRITICAL=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="CRITICAL").count] | first) // 0')
-                                    MAJOR=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="MAJOR").count] | first) // 0')
-                                    HOTSPOTS=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/hotspots/search?projectKey=${SONAR_PROJECT_KEY}&status=TO_REVIEW&ps=1" | jq -r '.paging.total')
+        stage('Verify Optimized Image') {
+            steps {
+                sh '''
+                    (
+                        FAT_CONTAINER=$(docker create maquinaroupa:ci)
+                        SLIM_CONTAINER=$(docker create maquinaroupa:slim)
+                        mkdir -p bundle-fat bundle-slim
+                        docker cp "$FAT_CONTAINER:/usr/share/nginx/html/." bundle-fat/
+                        docker cp "$SLIM_CONTAINER:/usr/share/nginx/html/." bundle-slim/
+                        docker rm -f "$FAT_CONTAINER" "$SLIM_CONTAINER"
 
-                                    echo "BLOCKER=$BLOCKER" > sonar-result.env
-                                    echo "CRITICAL=$CRITICAL" >> sonar-result.env
-                                    echo "MAJOR=$MAJOR" >> sonar-result.env
-                                    echo "HOTSPOTS=$HOTSPOTS" >> sonar-result.env
-                                    echo "DASHBOARD=${SONAR_HOST_URL}/dashboard?id=${SONAR_PROJECT_KEY}" >> sonar-result.env
+                        if ! diff --recursive --brief bundle-fat bundle-slim; then
+                            echo "ERRO: SlimToolkit removeu ou alterou arquivos do bundle estatico."
+                            exit 1
+                        fi
 
-                                    echo "Issues MAJOR ou piores: $ISSUES"
-                                    echo "Security hotspots pendentes: $HOTSPOTS"
-                                    if [ "$ISSUES" -gt 0 ] || [ "$HOTSPOTS" -gt 0 ]; then
-                                        echo "SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes."
-                                        exit 1
-                                    fi
-                                ) > sonar-output.txt 2>&1
-                                RC=$?
-                                cat sonar-output.txt
-                                exit $RC
-                            '''
-                        }
-                    }
-                    post {
-                        success {
-                            sh '''
-                                . ./sonarqube/sonar-result.env 2>/dev/null || true
-                                {
-                                    echo "<div class=\\"card ok\\">"
-                                    echo "<h2>&#9989; SonarQube</h2>"
-                                    echo "<p>Status: <span class=\\"badge ok\\">sem issues MAJOR+ e sem hotspots pendentes</span></p>"
-                                    echo "<table>"
-                                    echo "<tr><th>Metrica</th><th>Resultado</th></tr>"
-                                    echo "<tr><td>Blocker</td><td>${BLOCKER:-0}</td></tr>"
-                                    echo "<tr><td>Critical</td><td>${CRITICAL:-0}</td></tr>"
-                                    echo "<tr><td>Major</td><td>${MAJOR:-0}</td></tr>"
-                                    echo "<tr><td>Security hotspots pendentes</td><td>${HOTSPOTS:-0}</td></tr>"
-                                    echo "</table>"
-                                    echo "<p><a href=\\"${DASHBOARD}\\" target=\\"_blank\\">Ver dashboard completo no SonarCloud</a></p>"
-                                    echo "</div>"
-                                } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
-                            '''
-                            stash name: 'summary-08', includes: 'ci-summary/08-sonarqube.html'
-                        }
-                        failure {
-                            sh '''
-                                {
-                                    echo "<div class=\\"card fail\\">"
-                                    echo "<h2>&#10060; SonarQube</h2>"
-                                    echo "<p>Status: <span class=\\"badge fail\\">issues MAJOR+ ou hotspots pendentes encontrados</span></p>"
-                                    echo "<pre>"
-                                    sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' sonarqube/sonar-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
-                                    echo "</pre>"
-                                    echo "</div>"
-                                } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
-                            '''
-                            stash name: 'summary-08', includes: 'ci-summary/08-sonarqube.html'
-                        }
-                    }
+                        if grep --recursive --extended-regexp \
+                            'eyJ[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}|sb_publishable_[A-Za-z0-9_-]+' \
+                            bundle-slim; then
+                            echo "ERRO: imagem contem uma chave Supabase incorporada."
+                            exit 1
+                        fi
+
+                        rm -rf bundle-fat bundle-slim
+                    ) > verify-image-output.txt 2>&1
+                    RC=$?
+                    cat verify-image-output.txt
+                    exit $RC
+                '''
+            }
+        }
+
+        stage('Trivy (optimized image scan)') {
+            steps {
+                sh '''
+                    trivy image \
+                        --severity CRITICAL,HIGH \
+                        --exit-code 1 \
+                        --ignore-unfixed \
+                        --format table \
+                        -o trivy-image-report.txt \
+                        maquinaroupa:slim
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-image-report.txt', allowEmptyArchive: true
+                }
+                success {
+                    sh '''
+                        {
+                            echo "<h3>Trivy Scan (imagem otimizada)</h3>"
+                            echo "<p>Status: <span class=\\"badge ok\\">sem vulnerabilidades HIGH/CRITICAL</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' trivy-image-report.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                        } > "${WORKSPACE}/ci-summary/05b-body.html"
+                        echo "ok" > "${WORKSPACE}/ci-summary/05b-status.txt"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<h3>Trivy Scan (imagem otimizada)</h3>"
+                            echo "<p>Status: <span class=\\"badge fail\\">vulnerabilidade(s) HIGH/CRITICAL detectada(s)</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' trivy-image-report.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                        } > "${WORKSPACE}/ci-summary/05b-body.html"
+                        echo "fail" > "${WORKSPACE}/ci-summary/05b-status.txt"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
+
+        stage('SonarQube') {
+            steps {
+                dir('sonarqube') {
+                    checkout scm
+                    sh '''
+                        (
+                            sonar-scanner \
+                                -Dsonar.host.url="${SONAR_HOST_URL}" \
+                                -Dsonar.token="${SONAR_TOKEN}"
+
+                            TASK_ID=$(grep '^ceTaskId=' .scannerwork/report-task.txt | cut -d= -f2)
+                            STATUS="PENDING"
+                            for _ in $(seq 1 30); do
+                                STATUS=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/ce/task?id=${TASK_ID}" | jq -r '.task.status')
+                                echo "status=$STATUS"
+                                if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
+                                    break
+                                fi
+                                sleep 5
+                            done
+                            if [ "$STATUS" != "SUCCESS" ]; then
+                                echo "Processamento da analise terminou com status $STATUS"
+                                exit 1
+                            fi
+
+                            ISSUES_JSON=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&severities=BLOCKER,CRITICAL,MAJOR&resolved=false&ps=1&facets=severities")
+                            ISSUES=$(echo "$ISSUES_JSON" | jq -r '.total')
+                            BLOCKER=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="BLOCKER").count] | first) // 0')
+                            CRITICAL=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="CRITICAL").count] | first) // 0')
+                            MAJOR=$(echo "$ISSUES_JSON" | jq -r '([.facets[]? | select(.property=="severities").values[]? | select(.val=="MAJOR").count] | first) // 0')
+                            HOTSPOTS=$(curl -s -H "Authorization: Bearer ${SONAR_TOKEN}" "${SONAR_HOST_URL}/api/hotspots/search?projectKey=${SONAR_PROJECT_KEY}&status=TO_REVIEW&ps=1" | jq -r '.paging.total')
+
+                            echo "BLOCKER=$BLOCKER" > sonar-result.env
+                            echo "CRITICAL=$CRITICAL" >> sonar-result.env
+                            echo "MAJOR=$MAJOR" >> sonar-result.env
+                            echo "HOTSPOTS=$HOTSPOTS" >> sonar-result.env
+                            echo "DASHBOARD=${SONAR_HOST_URL}/dashboard?id=${SONAR_PROJECT_KEY}" >> sonar-result.env
+
+                            echo "Issues MAJOR ou piores: $ISSUES"
+                            echo "Security hotspots pendentes: $HOTSPOTS"
+                            if [ "$ISSUES" -gt 0 ] || [ "$HOTSPOTS" -gt 0 ]; then
+                                echo "SonarQube encontrou $ISSUES issue(s) MAJOR+ e $HOTSPOTS security hotspot(s) pendentes."
+                                exit 1
+                            fi
+                        ) > sonar-output.txt 2>&1
+                        RC=$?
+                        cat sonar-output.txt
+                        exit $RC
+                    '''
+                }
+            }
+            post {
+                success {
+                    sh '''
+                        . sonarqube/sonar-result.env 2>/dev/null || true
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; SonarQube</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">sem issues MAJOR+ e sem hotspots pendentes</span></p>"
+                            echo "<table>"
+                            echo "<tr><th>Metrica</th><th>Resultado</th></tr>"
+                            echo "<tr><td>Blocker</td><td>${BLOCKER:-0}</td></tr>"
+                            echo "<tr><td>Critical</td><td>${CRITICAL:-0}</td></tr>"
+                            echo "<tr><td>Major</td><td>${MAJOR:-0}</td></tr>"
+                            echo "<tr><td>Security hotspots pendentes</td><td>${HOTSPOTS:-0}</td></tr>"
+                            echo "</table>"
+                            echo "<p><a href=\\"${DASHBOARD}\\" target=\\"_blank\\">Ver dashboard completo no SonarCloud</a></p>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; SonarQube</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">issues MAJOR+ ou hotspots pendentes encontrados</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' sonarqube/sonar-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/08-sonarqube.html"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
+
+        stage('Checkov (IaC security scan)') {
+            steps {
+                dir('checkov') {
+                    checkout scm
+                    sh '''
+                        checkov \
+                            --directory . \
+                            --compact \
+                            --skip-framework terraform_plan \
+                            > checkov-output.txt 2>&1
+                        RC=$?
+                        cat checkov-output.txt
+                        exit $RC
+                    '''
+                }
+            }
+            post {
+                success {
+                    sh '''
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; Checkov (IaC security scan)</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">nenhuma politica de seguranca violada</span></p>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/09-checkov.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; Checkov (IaC security scan)</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">violacoes ou erros de analise encontrados</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' checkov/checkov-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/09-checkov.html"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
+
+        stage('OWASP ZAP (DAST)') {
+            environment {
+                DOCKER_NET = 'lab-jenkins_default'
+            }
+            steps {
+                sh '''
+                    (
+                        set -e
+                        if [ -z "${VITE_SUPABASE_URL}" ]; then
+                            echo "ERRO: VITE_SUPABASE_URL nao configurado."
+                            exit 1
+                        fi
+                        if [ -z "${VITE_SUPABASE_ANON_KEY}" ]; then
+                            echo "ERRO: VITE_SUPABASE_ANON_KEY nao configurado."
+                            exit 1
+                        fi
+
+                        docker rm -f maquinaroupa-security 2>/dev/null || true
+                        docker run -d --name maquinaroupa-security \
+                            --network "${DOCKER_NET}" \
+                            --env VITE_SUPABASE_URL="${VITE_SUPABASE_URL}" \
+                            --env VITE_SUPABASE_ANON_KEY="${VITE_SUPABASE_ANON_KEY}" \
+                            maquinaroupa:slim
+
+                        READY=0
+                        for _ in $(seq 1 30); do
+                            if curl --silent --fail "http://maquinaroupa-security:8080/" > /dev/null; then
+                                READY=1
+                                break
+                            fi
+                            sleep 2
+                        done
+                        if [ "$READY" != "1" ]; then
+                            echo "ERRO: aplicacao nao respondeu antes do timeout."
+                            docker logs maquinaroupa-security || true
+                            exit 1
+                        fi
+
+                        docker rm -f zap-scan 2>/dev/null || true
+                        set +e
+                        docker volume rm -f zap-wrk 2>/dev/null || true
+                        docker run --name zap-scan --network "${DOCKER_NET}" --user root --volume zap-wrk:/zap/wrk ghcr.io/zaproxy/zaproxy:stable \
+                            zap-baseline.py -t "http://maquinaroupa-security:8080" -J zap-report.json -r zap-report.html -I
+                        ZAP_EXIT_CODE=$?
+                        set -e
+
+                        mkdir -p zap-report
+                        docker cp zap-scan:/zap/wrk/zap-report.json zap-report/zap-report.json 2>/dev/null || echo "{}" > zap-report/zap-report.json
+                        docker cp zap-scan:/zap/wrk/zap-report.html zap-report/zap-report.html 2>/dev/null || true
+                        docker rm -f zap-scan maquinaroupa-security 2>/dev/null || true
+
+                        HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode == "3")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
+                        MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode == "2")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
+                        LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode == "1")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
+
+                        echo "HIGH=$HIGH" > zap-result.env
+                        echo "MEDIUM=$MEDIUM" >> zap-result.env
+                        echo "LOW=$LOW" >> zap-result.env
+
+                        echo "ZAP exit code: $ZAP_EXIT_CODE"
+                        echo "Alertas HIGH: $HIGH  MEDIUM: $MEDIUM  LOW: $LOW"
+
+                        if [ "$ZAP_EXIT_CODE" -gt 1 ]; then
+                            echo "ERRO: scan do ZAP nao foi concluido corretamente."
+                            exit 1
+                        fi
+                        if [ "$HIGH" -gt 0 ]; then
+                            echo "ERRO: OWASP ZAP encontrou $HIGH alerta(s) de risco alto."
+                            exit 1
+                        fi
+                        exit 0
+                    ) > zap-output.txt 2>&1
+                    RC=$?
+                    cat zap-output.txt
+                    exit $RC
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap-report/zap-report.html,zap-report/zap-report.json', allowEmptyArchive: true
+                }
+                success {
+                    sh '''
+                        . ./zap-result.env 2>/dev/null || true
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; OWASP ZAP (DAST)</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">sem alertas de risco alto</span></p>"
+                            echo "<table>"
+                            echo "<tr><th>Risco</th><th>Alertas</th></tr>"
+                            echo "<tr><td>Alto</td><td>${HIGH:-0}</td></tr>"
+                            echo "<tr><td>Medio</td><td>${MEDIUM:-0}</td></tr>"
+                            echo "<tr><td>Baixo</td><td>${LOW:-0}</td></tr>"
+                            echo "</table>"
+                            echo "<p>Relatorio completo em anexo nos artefatos do build (<code>zap-report.html</code>).</p>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/10-zap.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; OWASP ZAP (DAST)</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">alerta(s) de risco alto ou scan incompleto</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' zap-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/10-zap.html"
+                    '''
+                    script { writeSummary() }
                 }
             }
         }
 
         stage('Publish Verified Image') {
-            agent { label 'docker' }
             steps {
-                sh 'mkdir -p ci-summary'
                 sh '''
                     (
                         set -e
@@ -742,7 +726,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/11-publish.html"
                     '''
-                    stash name: 'summary-11', includes: 'ci-summary/11-publish.html'
+                    script { writeSummary() }
                 }
                 failure {
                     sh '''
@@ -756,7 +740,7 @@ HTMLEOF
                             echo "</div>"
                         } > "${WORKSPACE}/ci-summary/11-publish.html"
                     '''
-                    stash name: 'summary-11', includes: 'ci-summary/11-publish.html', allowEmpty: true
+                    script { writeSummary() }
                 }
             }
         }
@@ -764,19 +748,9 @@ HTMLEOF
 
     post {
         always {
-            node('docker') {
-                script {
-                    sh 'rm -rf ci-summary && mkdir -p ci-summary'
-                    tryUnstash('summary-01')
-                    tryUnstash('summary-02')
-                    tryUnstash('summary-03')
-                    tryUnstash('summary-09')
-                    tryUnstash('summary-docker-chain')
-                    tryUnstash('summary-08')
-                    tryUnstash('summary-11')
-                    writeSummary()
-                    publishSummary()
-                }
+            script {
+                writeSummary()
+                publishSummary()
             }
         }
     }
