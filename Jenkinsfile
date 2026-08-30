@@ -561,7 +561,7 @@ HTMLEOF
 
         stage('OWASP ZAP (DAST)') {
             environment {
-                APP_PORT = '18091'
+                DOCKER_NET = 'lab-jenkins_default'
             }
             steps {
                 sh '''
@@ -578,14 +578,14 @@ HTMLEOF
 
                         docker rm -f maquinaroupa-security 2>/dev/null || true
                         docker run -d --name maquinaroupa-security \
-                            --publish ${APP_PORT}:8080 \
+                            --network "${DOCKER_NET}" \
                             --env VITE_SUPABASE_URL="${VITE_SUPABASE_URL}" \
                             --env VITE_SUPABASE_ANON_KEY="${VITE_SUPABASE_ANON_KEY}" \
                             maquinaroupa:slim
 
                         READY=0
                         for _ in $(seq 1 30); do
-                            if curl --silent --fail "http://127.0.0.1:${APP_PORT}/" > /dev/null; then
+                            if curl --silent --fail "http://maquinaroupa-security:8080/" > /dev/null; then
                                 READY=1
                                 break
                             fi
@@ -599,8 +599,8 @@ HTMLEOF
 
                         docker rm -f zap-scan 2>/dev/null || true
                         set +e
-                        docker run --name zap-scan --network host ghcr.io/zaproxy/zaproxy:stable \
-                            zap-baseline.py -t "http://127.0.0.1:${APP_PORT}" -J zap-report.json -r zap-report.html -I
+                        docker run --name zap-scan --network "${DOCKER_NET}" ghcr.io/zaproxy/zaproxy:stable \
+                            zap-baseline.py -t "http://maquinaroupa-security:8080" -J zap-report.json -r zap-report.html -I
                         ZAP_EXIT_CODE=$?
                         set -e
 
