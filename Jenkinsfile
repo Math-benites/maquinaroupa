@@ -558,6 +558,117 @@ HTMLEOF
                 }
             }
         }
+
+        stage('OWASP ZAP (DAST)') {
+            environment {
+                APP_PORT = '18091'
+            }
+            steps {
+                sh '''
+                    (
+                        set -e
+                        if [ -z "${VITE_SUPABASE_URL}" ] || [ -z "${VITE_SUPABASE_ANON_KEY}" ]; then
+                            echo "ERRO: VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY nao configurados."
+                            exit 1
+                        fi
+
+                        docker rm -f maquinaroupa-security 2>/dev/null || true
+                        docker run -d --name maquinaroupa-security \
+                            --publish ${APP_PORT}:8080 \
+                            --env VITE_SUPABASE_URL="${VITE_SUPABASE_URL}" \
+                            --env VITE_SUPABASE_ANON_KEY="${VITE_SUPABASE_ANON_KEY}" \
+                            maquinaroupa:slim
+
+                        READY=0
+                        for _ in $(seq 1 30); do
+                            if curl --silent --fail "http://127.0.0.1:${APP_PORT}/" > /dev/null; then
+                                READY=1
+                                break
+                            fi
+                            sleep 2
+                        done
+                        if [ "$READY" != "1" ]; then
+                            echo "ERRO: aplicacao nao respondeu antes do timeout."
+                            docker logs maquinaroupa-security || true
+                            exit 1
+                        fi
+
+                        docker rm -f zap-scan 2>/dev/null || true
+                        set +e
+                        docker run --name zap-scan --network host ghcr.io/zaproxy/zaproxy:stable \
+                            zap-baseline.py -t "http://127.0.0.1:${APP_PORT}" -J zap-report.json -r zap-report.html -I
+                        ZAP_EXIT_CODE=$?
+                        set -e
+
+                        mkdir -p zap-report
+                        docker cp zap-scan:/zap/wrk/zap-report.json zap-report/zap-report.json 2>/dev/null || echo "{}" > zap-report/zap-report.json
+                        docker cp zap-scan:/zap/wrk/zap-report.html zap-report/zap-report.html 2>/dev/null || true
+                        docker rm -f zap-scan maquinaroupa-security 2>/dev/null || true
+
+                        HIGH=$(jq '[.site[]?.alerts[]? | select(.riskcode == "3")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
+                        MEDIUM=$(jq '[.site[]?.alerts[]? | select(.riskcode == "2")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
+                        LOW=$(jq '[.site[]?.alerts[]? | select(.riskcode == "1")] | length' zap-report/zap-report.json 2>/dev/null || echo 0)
+
+                        echo "HIGH=$HIGH" > zap-result.env
+                        echo "MEDIUM=$MEDIUM" >> zap-result.env
+                        echo "LOW=$LOW" >> zap-result.env
+
+                        echo "ZAP exit code: $ZAP_EXIT_CODE"
+                        echo "Alertas HIGH: $HIGH  MEDIUM: $MEDIUM  LOW: $LOW"
+
+                        if [ "$ZAP_EXIT_CODE" -gt 1 ]; then
+                            echo "ERRO: scan do ZAP nao foi concluido corretamente."
+                            exit 1
+                        fi
+                        if [ "$HIGH" -gt 0 ]; then
+                            echo "ERRO: OWASP ZAP encontrou $HIGH alerta(s) de risco alto."
+                            exit 1
+                        fi
+                    ) > zap-output.txt 2>&1
+                    RC=$?
+                    cat zap-output.txt
+                    exit $RC
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap-report/zap-report.html,zap-report/zap-report.json', allowEmptyArchive: true
+                }
+                success {
+                    sh '''
+                        . zap-result.env 2>/dev/null || true
+                        {
+                            echo "<div class=\\"card ok\\">"
+                            echo "<h2>&#9989; OWASP ZAP (DAST)</h2>"
+                            echo "<p>Status: <span class=\\"badge ok\\">sem alertas de risco alto</span></p>"
+                            echo "<table>"
+                            echo "<tr><th>Risco</th><th>Alertas</th></tr>"
+                            echo "<tr><td>Alto</td><td>${HIGH:-0}</td></tr>"
+                            echo "<tr><td>Medio</td><td>${MEDIUM:-0}</td></tr>"
+                            echo "<tr><td>Baixo</td><td>${LOW:-0}</td></tr>"
+                            echo "</table>"
+                            echo "<p>Relatorio completo em anexo nos artefatos do build (<code>zap-report.html</code>).</p>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/10-zap.html"
+                    '''
+                    script { writeSummary() }
+                }
+                failure {
+                    sh '''
+                        {
+                            echo "<div class=\\"card fail\\">"
+                            echo "<h2>&#10060; OWASP ZAP (DAST)</h2>"
+                            echo "<p>Status: <span class=\\"badge fail\\">alerta(s) de risco alto ou scan incompleto</span></p>"
+                            echo "<pre>"
+                            sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g' zap-output.txt 2>/dev/null || echo "Relatorio nao gerado; consulte os logs."
+                            echo "</pre>"
+                            echo "</div>"
+                        } > "${WORKSPACE}/ci-summary/10-zap.html"
+                    '''
+                    script { writeSummary() }
+                }
+            }
+        }
     }
 
     post {
