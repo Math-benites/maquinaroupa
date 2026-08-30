@@ -27,10 +27,9 @@ locals {
 }
 
 resource "docker_container" "app" {
-  count      = var.app_replicas
-  name       = "${var.container_name}-${count.index + 1}"
-  image      = local.app_image_id
-  privileged = true
+  count = var.app_replicas
+  name  = "${var.container_name}-${count.index + 1}"
+  image = local.app_image_id
 
   env = [
     "VITE_SUPABASE_URL=${var.vite_supabase_url}",
